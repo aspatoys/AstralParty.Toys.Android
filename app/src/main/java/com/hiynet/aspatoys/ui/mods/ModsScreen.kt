@@ -68,9 +68,10 @@ fun ModsScreen(
         if (uri != null) controller.checkContentUri(uri)
     }
 
-    // 每次进入模组页都重扫：加载器目录会被安装器和游戏同时改动，缓存一次没有意义。
+    // 首次进入扫一次；之后由「刷新」按钮和每次操作后的自动刷新负责，
+    // 避免每次切页都跑几十条 shell 命令（那就是"不跟手"的来源）。
     LaunchedEffect(Unit) {
-        controller.refresh()
+        if (!controller.initialized) controller.refresh()
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -167,7 +168,11 @@ fun ModsScreen(
             }
             items(controller.installed.size) { index ->
                 val entry = controller.installed[index]
-                InstalledModCard(entry, onToggle = { enabled -> controller.setEnabled(entry, enabled) })
+                InstalledModCard(
+                    entry = entry,
+                    busy = controller.busyModId == entry.name,
+                    onToggle = { enabled -> controller.setEnabled(entry, enabled) },
+                )
             }
 
             item {
@@ -384,7 +389,7 @@ private fun IssueCard(issue: ModIssue) {
 }
 
 @Composable
-private fun InstalledModCard(entry: ModEntry, onToggle: (Boolean) -> Unit) {
+private fun InstalledModCard(entry: ModEntry, busy: Boolean, onToggle: (Boolean) -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -407,7 +412,7 @@ private fun InstalledModCard(entry: ModEntry, onToggle: (Boolean) -> Unit) {
             }
             Pill("v${entry.version.ifBlank { "?" }}")
             Spacer(Modifier.width(8.dp))
-            Switch(checked = entry.enabled, onCheckedChange = onToggle)
+            Switch(checked = entry.enabled, enabled = !busy, onCheckedChange = onToggle)
         }
         Spacer(Modifier.height(4.dp))
         Text(

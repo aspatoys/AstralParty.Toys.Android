@@ -16,6 +16,7 @@ import com.hiynet.aspatoys.data.mods.ModPackageException
 import com.hiynet.aspatoys.data.settings.StorageAccess
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -92,10 +93,17 @@ class ModsController(
     var scanError by mutableStateOf<String?>(null)
         private set
 
+    /** 正在进行的扫描；同一时间只允许一个，避免两次扫描的结果互相覆盖。 */
+    private var refreshJob: Job? = null
+
+    /** 正在切换启用状态的模组 Id；界面据此只锁那一行的开关。 */
+    var busyModId by mutableStateOf<String?>(null)
+        private set
+
     fun refresh() {
-        if (scanning) return
+        if (refreshJob?.isActive == true) return
         scanning = true
-        scope.launch {
+        refreshJob = scope.launch {
             try {
                 allFilesAccess = StorageAccess.hasAllFilesAccess(context)
                 loaderRootAccess = withContext(Dispatchers.IO) {
@@ -254,6 +262,8 @@ class ModsController(
 
     /** 启用/停用：在 `mods/` 与 `disabled_mods/` 之间搬整个模组目录。 */
     fun setEnabled(entry: ModEntry, enabled: Boolean) {
+        if (busyModId != null) return
+        busyModId = entry.name
         scope.launch {
             try {
                 withContext(Dispatchers.IO) {
@@ -261,9 +271,12 @@ class ModsController(
                         .setEnabled(container.layout(), entry.name, enabled) { }
                 }
                 message = if (enabled) "${entry.shownName} 已启用" else "${entry.shownName} 已停用"
+                // 搬完再扫，避免旧扫描结果把刚切换的开关又顶回去。
                 refresh()
             } catch (failure: Exception) {
                 message = "切换状态失败：${failure.message ?: failure::class.java.simpleName}"
+            } finally {
+                busyModId = null
             }
         }
     }
