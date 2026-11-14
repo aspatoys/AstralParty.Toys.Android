@@ -25,8 +25,22 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // 正式包签名：本地/CI 用环境变量注入，不把 keystore 或密码写进仓库。
+    val releaseKeyStore = System.getenv("ASPATOYS_KEYSTORE")
+    signingConfigs {
+        if (!releaseKeyStore.isNullOrBlank()) {
+            create("release") {
+                storeFile = file(releaseKeyStore)
+                storePassword = System.getenv("ASPATOYS_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ASPATOYS_KEY_ALIAS") ?: "aspatoys"
+                keyPassword = System.getenv("ASPATOYS_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("release")
             optimization {
                 enable = true
                 packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
