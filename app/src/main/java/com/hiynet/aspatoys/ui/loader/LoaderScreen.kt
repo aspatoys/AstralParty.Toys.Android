@@ -22,7 +22,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -69,6 +68,7 @@ fun LoaderScreen(
     var status by remember { mutableStateOf<LoaderInstaller.Status?>(null) }
     var busy by remember { mutableStateOf(false) }
     var logs by remember { mutableStateOf<List<String>>(emptyList()) }
+    var mode by remember { mutableStateOf(settings.privilegeMode) }
 
     fun refresh() {
         scope.launch {
@@ -113,8 +113,11 @@ fun LoaderScreen(
         Text("加载器", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
 
         PrivilegeModeCard(
-            settings = settings,
-            onModeChanged = onModeChanged,
+            mode = mode,
+            onModeChanged = { next ->
+                mode = next
+                onModeChanged(next)
+            },
         )
 
         WorkspaceCard(mods = mods, onOpenSettings = onOpenSettings)
@@ -232,10 +235,10 @@ fun LoaderScreen(
  */
 @Composable
 private fun PrivilegeModeCard(
-    settings: AppSettings,
+    mode: String,
     onModeChanged: (String) -> Unit,
 ) {
-    val rootMode = settings.privilegeMode == AppSettings.PrivilegeRoot
+    val rootMode = mode == AppSettings.PrivilegeRoot
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -246,23 +249,15 @@ private fun PrivilegeModeCard(
     ) {
         Text("提权方式", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val chipColors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                containerColor = MaterialTheme.colorScheme.surface,
-                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
             FilterChip(
                 selected = !rootMode,
                 onClick = { onModeChanged(AppSettings.PrivilegeShizuku) },
                 label = { Text("Shizuku 模式") },
-                colors = chipColors,
             )
             FilterChip(
                 selected = rootMode,
                 onClick = { onModeChanged(AppSettings.PrivilegeRoot) },
                 label = { Text("Root 模式") },
-                colors = chipColors,
             )
         }
         Text(
