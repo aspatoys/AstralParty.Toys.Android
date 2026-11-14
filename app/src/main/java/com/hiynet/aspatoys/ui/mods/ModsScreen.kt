@@ -262,8 +262,12 @@ private fun WorkspaceCard(controller: ModsController, onOpenSettings: () -> Unit
             buildString {
                 append("已装 ${controller.installed.size} 个模组 · SDK ")
                 append(controller.installedSdkVersion ?: "未知")
+                // 直读不到不等于读不到：加载器在游戏私有目录里，正常路径就是经 Shizuku。
                 val access = controller.loaderRootAccess
-                if (access != null) {
+                val viaShizuku = controller.scanMode.startsWith("Shizuku")
+                if (viaShizuku) {
+                    append(" · 经 Shizuku 读取")
+                } else if (access != null) {
                     append(" · ")
                     append(
                         when {

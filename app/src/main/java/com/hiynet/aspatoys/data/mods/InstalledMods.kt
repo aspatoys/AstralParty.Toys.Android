@@ -35,13 +35,13 @@ object InstalledMods {
                 val dllPath = "$root/$dir/$dir.dll"
                 if (!fs.exists(dllPath)) continue
                 if (!seen.add(dir.lowercase())) continue
-                result += remoteEntry(dir, "$dir.dll", dir, disabled, fs.readText("$root/$dir/$dir.json"))
+                result += remoteEntry(dir, "$dir.dll", dir, disabled, fs.readText("$root/$dir/$dir.json"), fs.fileSize(dllPath))
             }
             for (file in fs.listFiles(root)) {
                 if (!file.endsWith(".dll", ignoreCase = true)) continue
                 val modId = file.removeSuffix(".dll").removeSuffix(".DLL")
                 if (!seen.add(modId.lowercase())) continue
-                result += remoteEntry(modId, file, null, disabled, fs.readText("$root/$modId.json"))
+                result += remoteEntry(modId, file, null, disabled, fs.readText("$root/$modId.json"), fs.fileSize("$root/$file"))
             }
         }
         return result.sortedBy { it.name.lowercase() }
@@ -53,6 +53,7 @@ object InstalledMods {
         directoryName: String?,
         disabled: Boolean,
         sidecarText: String?,
+        sizeBytes: Long = 0L,
     ): ModEntry {
         val metadata = try {
             if (sidecarText.isNullOrBlank()) ModSidecar() else (ModSidecar.parse(sidecarText) ?: ModSidecar())
@@ -63,7 +64,7 @@ object InstalledMods {
             name = name,
             fileName = fileName,
             directoryName = directoryName,
-            sizeBytes = 0L,
+            sizeBytes = sizeBytes,
             modifiedEpochMs = 0L,
             id = metadata.id,
             displayName = metadata.name,

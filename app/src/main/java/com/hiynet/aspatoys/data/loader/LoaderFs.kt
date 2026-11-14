@@ -31,6 +31,9 @@ interface LoaderFs {
 
     fun makeDirectories(path: String)
 
+    /** 文件字节数；读不到时返回 0（不猜）。 */
+    fun fileSize(path: String): Long
+
     /** 把本地文件复制到设备路径（`cat local > remote`）。 */
     fun copyIn(localFile: java.io.File, remotePath: String)
 
@@ -87,6 +90,9 @@ class ShizukuLoaderFs : LoaderFs {
     override fun makeDirectories(path: String) {
         ShizukuShell.exec("mkdir -p " + q(path))
     }
+
+    override fun fileSize(path: String): Long =
+        run("stat -c %s " + q(path))?.trim()?.toLongOrNull() ?: 0L
 
     override fun copyIn(localFile: java.io.File, remotePath: String) {
         ShizukuShell.exec("cat " + q(localFile.absolutePath) + " > " + q(remotePath))
