@@ -85,7 +85,10 @@ jobs:
           mkdir -p loaderpkg
           gh release download "$tag" --repo "$LOADER_REPO" \
             --pattern "cesium-loader-${version}.zip" --dir loaderpkg
+          unzip -q "loaderpkg/cesium-loader-${version}.zip" -d loaderpkg/unpacked
           echo "zip=$PWD/loaderpkg/cesium-loader-${version}.zip" >> "$GITHUB_OUTPUT"
+          echo "sdk=$PWD/loaderpkg/unpacked/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" >> "$GITHUB_OUTPUT"
+          ls -l loaderpkg/unpacked/AstralParty_ModLoader/sdk
           echo "加载器 $version"
 
       - name: Fetch the injected game assembly
@@ -113,7 +116,7 @@ jobs:
             -PappVersionName="${{ steps.version.outputs.name }}" \
             -PappVersionCode="${{ steps.version.outputs.code }}" \
             -PcesiumReleaseZip="${{ steps.loader.outputs.zip }}" \
-            -PcesiumSdkDll="$PWD/loaderpkg/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" \
+            -PcesiumSdkDll="${{ steps.loader.outputs.sdk }}" \
             -PcesiumBootstrapDll="$PWD/loader/managed/CesiumLoader.Android.Bootstrap/bin/Release/netstandard2.0/CesiumLoader.Android.Bootstrap.dll" \
             -PcesiumInjectedDll="$PWD/payload/AstralParty.Runtime.injected.dll" \
             :app:testDebugUnitTest :app:assembleDebug
