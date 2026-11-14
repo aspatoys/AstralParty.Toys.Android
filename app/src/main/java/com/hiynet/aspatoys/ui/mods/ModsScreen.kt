@@ -22,6 +22,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -164,7 +165,10 @@ fun ModsScreen(
                     EmptyHint("工作区里还没有模组。把 AstralParty_ModLoader 目录放到工作区，或先在市场下载模组包。")
                 }
             }
-            items(controller.installed.size) { index -> InstalledModCard(controller.installed[index]) }
+            items(controller.installed.size) { index ->
+                val entry = controller.installed[index]
+                InstalledModCard(entry, onToggle = { enabled -> controller.setEnabled(entry, enabled) })
+            }
 
             item {
                 Spacer(Modifier.height(8.dp))
@@ -222,6 +226,12 @@ fun ModsScreen(
                 PackageReportContent(report)
                 Spacer(Modifier.height(16.dp))
                 Button(
+                    onClick = { controller.installCheckedPackage() },
+                    enabled = controller.checkedPackage != null && !controller.installing,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (controller.installing) "安装中…" else "安装到加载器") }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
                     onClick = {
                         showReport = false
                         controller.dismissReport()
@@ -374,7 +384,7 @@ private fun IssueCard(issue: ModIssue) {
 }
 
 @Composable
-private fun InstalledModCard(entry: ModEntry) {
+private fun InstalledModCard(entry: ModEntry, onToggle: (Boolean) -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -396,6 +406,8 @@ private fun InstalledModCard(entry: ModEntry) {
                 Spacer(Modifier.width(6.dp))
             }
             Pill("v${entry.version.ifBlank { "?" }}")
+            Spacer(Modifier.width(8.dp))
+            Switch(checked = entry.enabled, onCheckedChange = onToggle)
         }
         Spacer(Modifier.height(4.dp))
         Text(

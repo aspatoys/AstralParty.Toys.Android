@@ -6,6 +6,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.hiynet.aspatoys.data.AppContainer
+import com.hiynet.aspatoys.data.loader.ModInstaller
+import java.io.File
 import com.hiynet.aspatoys.data.market.PackageCheckReport
 import com.hiynet.aspatoys.data.mods.InstalledMods
 import com.hiynet.aspatoys.data.mods.ModEntry
@@ -16,7 +18,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 /** 下载目录里的一个模组包。 */
 data class DownloadedPackage(
@@ -191,6 +192,7 @@ class ModsController(
                 val copied = withContext(Dispatchers.IO) { copyToCache(uri) }
                 val result = withContext(Dispatchers.IO) { container.packageService().checkLocal(copied) }
                 report = result
+                checkedPackage = copied
             } catch (failure: ModPackageException) {
                 message = failure.message
             } catch (failure: Exception) {
@@ -215,6 +217,55 @@ class ModsController(
 
     fun dismissReport() {
         report = null
+    }
+
+    /** 刚检查过的包：报告里可以直接装进加载器。 */
+    var checkedPackage by mutableStateOf<File?>(null)
+        private set
+
+    var installing by mutableStateOf(false)
+        private set
+
+    /** 把检查过的包解到加载器：`mods/<ModId>/`，并清掉上次清单里多的文件。 */
+    fun installCheckedPackage() {
+        val file = checkedPackage ?: run { message = "先检查一个模组包，再安装"; return }
+        if (installing) return
+        installing = true
+        scope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    ModInstaller(com.hiynet.aspatoys.data.loader.ShizukuLoaderFs())
+                        .install(file, container.layout()) { }
+                }
+                message = buildString {
+                    append("已安装 ${result.modId}：${result.files} 个文件")
+                    if (result.removed > 0) append("，清理 ${result.removed} 个旧文件")
+                }
+                checkedPackage = null
+                report = null
+                refresh()
+            } catch (failure: Exception) {
+                message = "安装到加载器失败：${failure.message ?: failure::class.java.simpleName}"
+            } finally {
+                installing = false
+            }
+        }
+    }
+
+    /** 启用/停用：在 `mods/` 与 `disabled_mods/` 之间搬整个模组目录。 */
+    fun setEnabled(entry: ModEntry, enabled: Boolean) {
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    ModInstaller(com.hiynet.aspatoys.data.loader.ShizukuLoaderFs())
+                        .setEnabled(container.layout(), entry.name, enabled) { }
+                }
+                message = if (enabled) "${entry.shownName} 已启用" else "${entry.shownName} 已停用"
+                refresh()
+            } catch (failure: Exception) {
+                message = "切换状态失败：${failure.message ?: failure::class.java.simpleName}"
+            }
+        }
     }
 
     fun clearMessage() {
