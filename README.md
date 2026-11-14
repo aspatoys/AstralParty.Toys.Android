@@ -35,6 +35,18 @@ dotnet build loader/managed/CesiumLoader.Android.Bootstrap -c Release
 
 `syncLoaderAssets` 会把这些产物拷进 `app/src/main/assets/cesium/`，并从发行版清单里取版本号。这些产物都不进版本库。
 
+## 发布
+
+打 `v*` 标签即发布：
+
+```bash
+git tag v1.0.1 && git push origin v1.0.1
+```
+
+工作流会取 CesiumLoader 的最新发行版作为随包加载器，构建 APK 并作为 GitHub Release（Latest）发布；分支推送与 PR 只上传构建产物，不发版。`versionName` 取自标签，`versionCode` 递增，覆盖安装即可升级。
+
+游戏热更后，注入产物需要重新生成并替换仓库 `payload` 发行版里的 `AstralParty.Runtime.injected.dll`，下一次打标签就会带进 APK。
+
 ## 加载器与模组
 
 - 加载器本体、SDK 与内置模组：[CesiumLoader](https://github.com/higashitaniyume/CesiumLoader)
