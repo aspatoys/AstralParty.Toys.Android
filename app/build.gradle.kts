@@ -49,6 +49,7 @@ android {
 //   注入后的程序集 -PcesiumInjectedDll=<dll>   （默认取 outputs/phone 下的产物）
 //   发行版模组    -PcesiumReleaseZip=<zip>    （可选；给了就把里面的内置模组同步过来）
 val workspaceRoot = rootProject.projectDir.parentFile
+val repoRootDir = rootProject.projectDir
 val assetsCesium = layout.projectDirectory.dir("src/main/assets/cesium").asFile
 
 fun resolveFile(property: String, env: String, fallback: File): File {
@@ -63,6 +64,8 @@ val cesiumInjected = resolveFile("cesiumInjectedDll", "CESIUM_INJECTED_DLL", Fil
 val cesiumReleaseZip = resolveFile("cesiumReleaseZip", "CESIUM_RELEASE_ZIP", File(""))
 
 val syncLoaderAssets = tasks.register("syncLoaderAssets") {
+    // 直接读写 assets 目录、不参与增量跟踪，所以显式退出配置缓存而不是让它报错。
+    notCompatibleWithConfigurationCache("同步 assets 载荷：直接文件 IO，不做增量跟踪")
     group = "cesium"
     description = "把 SDK / 引导 DLL / 发行版内置模组 / 注入产物同步到 assets/cesium"
 
@@ -81,7 +84,7 @@ val syncLoaderAssets = tasks.register("syncLoaderAssets") {
             }
             target.parentFile.mkdirs()
             source.copyTo(target, overwrite = true)
-            logger.lifecycle("$what -> ${target.relativeTo(rootProject.projectDir)}  ${source.length()} B")
+            logger.lifecycle("$what -> ${target.relativeTo(repoRootDir)}  ${source.length()} B")
         }
 
         copyOrExplain(cesiumSdk, File(assetsCesium, "sdk/CesiumLoader.SDK.dll"), "sdk")

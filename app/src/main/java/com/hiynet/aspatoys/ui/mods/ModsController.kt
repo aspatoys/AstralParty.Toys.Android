@@ -83,6 +83,14 @@ class ModsController(
     var initialized by mutableStateOf(false)
         private set
 
+    /** 这次扫描用的读取方式：`Shizuku` / `直读` / `未授权`。界面上直接显示，避免靠日志猜。 */
+    var scanMode by mutableStateOf("")
+        private set
+
+    /** 扫描失败原因（含 Shizuku 命令失败的具体输出）。 */
+    var scanError by mutableStateOf<String?>(null)
+        private set
+
     fun refresh() {
         if (scanning) return
         scanning = true
@@ -100,7 +108,8 @@ class ModsController(
                     // 但 listFiles() 是空的，所以有 Shizuku 就一律走 Shizuku。
                     val remote = com.hiynet.aspatoys.data.loader.ShizukuLoaderFs()
                     val usable = remote.isAvailable() || com.hiynet.aspatoys.installer.ShizukuShell.awaitBinder()
-                    android.util.Log.i("CesiumMods", "scan root=${layout.loaderRoot} shizuku=$usable")
+                    scanMode = if (usable) "Shizuku" else "直读（没拿到 Shizuku）"
+                    android.util.Log.i("CesiumMods", "scan root=${layout.loaderRoot} mode=$scanMode")
 
                     val entries = if (usable) {
                         InstalledMods.scanRemote(layout, remote)
@@ -108,6 +117,7 @@ class ModsController(
                         InstalledMods.scan(layout)
                     }
                     android.util.Log.i("CesiumMods", "scan result=${entries.size}")
+                    scanError = if (usable) remote.lastError else null
 
                     val sdk = layout.installedSdkVersion { path ->
                         if (usable) remote.readText(path) else null
@@ -120,7 +130,8 @@ class ModsController(
                 packages = withContext(Dispatchers.IO) { listPackages() }
                 initialized = true
             } catch (failure: Exception) {
-                message = "读取模组目录失败：${failure.message}"
+                scanError = "读取模组目录失败：${failure.message ?: failure::class.java.simpleName}"
+                message = scanError
             } finally {
                 scanning = false
             }

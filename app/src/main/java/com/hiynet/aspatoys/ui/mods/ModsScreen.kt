@@ -67,8 +67,9 @@ fun ModsScreen(
         if (uri != null) controller.checkContentUri(uri)
     }
 
+    // 每次进入模组页都重扫：加载器目录会被安装器和游戏同时改动，缓存一次没有意义。
     LaunchedEffect(Unit) {
-        if (!controller.initialized) controller.refresh()
+        controller.refresh()
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -78,6 +79,25 @@ fun ModsScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             item { WorkspaceCard(controller, onOpenSettings) }
+
+            if (controller.scanMode.isNotEmpty() || controller.scanError != null) {
+                item {
+                    Column {
+                        Text(
+                            "读取方式：${controller.scanMode}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        controller.scanError?.let { error ->
+                            MessageBanner(
+                                text = error,
+                                container = MaterialTheme.colorScheme.errorContainer,
+                                content = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                        }
+                    }
+                }
+            }
 
             if (!controller.allFilesAccess) {
                 item { StorageAccessCard(controller) }

@@ -44,10 +44,10 @@ class ShizukuLoaderFs : LoaderFs {
     override fun isAvailable(): Boolean = ShizukuShell.isServiceAlive() && ShizukuShell.hasPermission()
 
     override fun listDirectories(path: String): List<String> =
-        lines("ls -p " + q(path) + " 2>/dev/null | grep '/$' | sed 's#/$##'")
+        lines("ls -p " + q(path) + " 2>/dev/null | grep '/$' | sed 's#/$##'; true")
 
     override fun listFiles(path: String): List<String> =
-        lines("ls -p " + q(path) + " 2>/dev/null | grep -v '/$'")
+        lines("ls -p " + q(path) + " 2>/dev/null | grep -v '/$'; true")
 
     override fun exists(path: String): Boolean =
         run("test -e " + q(path) + " && echo yes")?.trim() == "yes"
