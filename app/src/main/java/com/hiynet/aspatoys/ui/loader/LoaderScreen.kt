@@ -1,12 +1,21 @@
 package com.hiynet.aspatoys.ui.loader
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -24,21 +33,30 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hiynet.aspatoys.installer.LoaderInstaller
 import com.hiynet.aspatoys.installer.ShizukuShell
+import com.hiynet.aspatoys.ui.components.SkeletonLine
+import com.hiynet.aspatoys.ui.mods.ModsController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 加载器页：装 / 还原。
+ * 加载器页：加载器目录的状态（原来在模组页顶部的「模组工作区」）+ 装 / 还原。
  *
  * 所有设备操作都经 Shizuku（`shell` 身份）完成，所以第一步是授权，第二步才是安装。
  */
 @Composable
-fun LoaderScreen(installer: LoaderInstaller, onLoaderChanged: () -> Unit = {}) {
+fun LoaderScreen(
+    installer: LoaderInstaller,
+    mods: ModsController,
+    onOpenSettings: () -> Unit,
+    onLoaderChanged: () -> Unit = {},
+) {
     val scope = rememberCoroutineScope()
     val permissionVersion = ShizukuShell.permissionVersion
 
@@ -48,7 +66,9 @@ fun LoaderScreen(installer: LoaderInstaller, onLoaderChanged: () -> Unit = {}) {
 
     fun refresh() {
         scope.launch {
-            status = withContext(Dispatchers.IO) { runCatching { installer.status() }.getOrDefault(LoaderInstaller.Status(note = "状态读取失败")) }
+            status = withContext(Dispatchers.IO) {
+                runCatching { installer.status() }.getOrDefault(LoaderInstaller.Status(note = "状态读取失败"))
+            }
         }
     }
 
@@ -75,24 +95,31 @@ fun LoaderScreen(installer: LoaderInstaller, onLoaderChanged: () -> Unit = {}) {
     }
 
     LaunchedEffect(permissionVersion) { refresh() }
+    LaunchedEffect(Unit) { mods.onEnter() }
 
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("加载器", style = MaterialTheme.typography.titleLarge)
-        Text(
-            "把引导调用注入游戏的热更缓存包，并把 SDK 与引导 DLL 放进加载器目录。需要 Shizuku。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Text("加载器", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+
+        WorkspaceCard(mods = mods, onOpenSettings = onOpenSettings)
 
         Card {
-            Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("状态", style = MaterialTheme.typography.titleSmall)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text("注入状态", style = MaterialTheme.typography.titleSmall)
                 val current = status
                 if (current == null) {
-                    Text("读取中…", style = MaterialTheme.typography.bodySmall)
+                    // 第一次读状态要跑几条 shell 命令，先铺骨架，别让这一块空着。
+                    repeat(4) { SkeletonLine(widthFraction = if (it % 2 == 0) 0.85f else 0.6f, height = 11.dp) }
                 } else {
                     StatusLine("Shizuku 服务", if (current.shizukuAlive) "运行中" else "未运行")
                     StatusLine("Shizuku 授权", if (current.shizukuGranted) "已授权" else "未授权")
@@ -102,6 +129,7 @@ fun LoaderScreen(installer: LoaderInstaller, onLoaderChanged: () -> Unit = {}) {
                     StatusLine("载荷", if (current.loaderPayload) "已就位" else "缺失")
                     StatusLine("本地备份", if (current.hasBackup) "有" else "无")
                     if (current.note.isNotBlank()) {
+                        Spacer(Modifier.height(2.dp))
                         Text(
                             current.note,
                             style = MaterialTheme.typography.bodySmall,
@@ -128,22 +156,76 @@ fun LoaderScreen(installer: LoaderInstaller, onLoaderChanged: () -> Unit = {}) {
             ) { Text("还原原包") }
         }
 
-        if (busy) {
+        AnimatedVisibility(
+            visible = busy,
+            enter = fadeIn() + slideInVertically { -it / 3 },
+            exit = fadeOut(),
+        ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CircularProgressIndicator(modifier = Modifier.padding(4.dp))
                 Text("执行中…", style = MaterialTheme.typography.bodySmall)
             }
         }
 
-        if (logs.isNotEmpty()) {
-            HorizontalDivider()
-            SelectionContainer {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    logs.forEach { line ->
-                        Text(line, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+        AnimatedVisibility(visible = logs.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
+            Column {
+                HorizontalDivider()
+                Spacer(Modifier.height(8.dp))
+                SelectionContainer {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        logs.forEach { line ->
+                            Text(line, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * 加载器目录的状态卡：路径、已装数量、SDK 版本、读取方式。
+ *
+ * 这些是加载器的属性，原来挤在模组页顶部，把模组列表推得太靠下。
+ */
+@Composable
+private fun WorkspaceCard(mods: ModsController, onOpenSettings: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(14.dp),
+    ) {
+        Text("加载器目录", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            mods.loaderRootPath,
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            "模组目录：${mods.loaderRootPath.trimEnd('/')}/mods",
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            buildString {
+                append("已装 ${mods.installed.size} 个模组 · SDK ")
+                append(mods.installedSdkVersion ?: "未知")
+                if (mods.scanMode.startsWith("Shizuku")) append(" · 经 Shizuku 读取")
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = onOpenSettings) { Text("修改目录") }
+            OutlinedButton(onClick = mods::refreshAccess) { Text("重新检测") }
         }
     }
 }

@@ -1,58 +1,68 @@
 package com.hiynet.aspatoys.ui.theme
 
-import android.app.Activity
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
+/**
+ * 品牌配色。不跟随系统动态取色：动态色会把主题换成壁纸的调子，
+ * 与启动图标、导航图标对不上，看着像两个应用拼起来的。
+ */
+private val LightColorScheme = lightColorScheme(
+    primary = Raspberry,
+    onPrimary = Color.White,
+    primaryContainer = RaspberryContainer,
+    onPrimaryContainer = OnRaspberryContainer,
+    secondary = Denim,
+    onSecondary = Color.White,
+    secondaryContainer = DenimContainer,
+    onSecondaryContainer = OnDenimContainer,
+    tertiary = Gold,
+    onTertiary = Color.White,
+    tertiaryContainer = GoldContainer,
+    onTertiaryContainer = OnGoldContainer,
+    background = Paper,
+    onBackground = Ink,
+    surface = Paper,
+    onSurface = Ink,
+    surfaceVariant = PaperVariant,
+    onSurfaceVariant = InkVariant,
+    outline = InkVariant,
 )
 
-private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+private val DarkColorScheme = darkColorScheme(
+    primary = RaspberryLight,
+    onPrimary = Color(0xFF64122F),
+    primaryContainer = RaspberryContainerDark,
+    onPrimaryContainer = RaspberryContainer,
+    secondary = DenimLight,
+    onSecondary = Color(0xFF132048),
+    secondaryContainer = DenimContainerDark,
+    onSecondaryContainer = DenimContainer,
+    tertiary = GoldLight,
+    onTertiary = Color(0xFF3A2A00),
+    tertiaryContainer = GoldContainerDark,
+    onTertiaryContainer = GoldContainer,
+    background = Night,
+    onBackground = Color(0xFFF0DEE1),
+    surface = Night,
+    onSurface = Color(0xFFF0DEE1),
+    surfaceVariant = NightSurfaceVariant,
+    onSurfaceVariant = Color(0xFFD6C2C5),
+    outline = Color(0xFF9E8C8F),
 )
 
 @Composable
 fun AstralPartyToysTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
-    content: @Composable () -> Unit
+    content: @Composable () -> Unit,
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
-
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme,
         typography = Typography,
-        content = content
+        content = content,
     )
 }

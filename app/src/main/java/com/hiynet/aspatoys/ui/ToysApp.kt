@@ -1,5 +1,11 @@
 package com.hiynet.aspatoys.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -28,12 +34,12 @@ import com.hiynet.aspatoys.ui.mods.ModsController
 import com.hiynet.aspatoys.ui.mods.ModsScreen
 import com.hiynet.aspatoys.ui.settings.SettingsScreen
 
-/** 四个顶层页面：模组、市场、加载器、设置。 */
+/** 四个顶层页面：模组、市场、加载器、设置。图标统一成同一套 Material 线性字形。 */
 enum class Destination(val label: String, val icon: Int) {
-    MODS("模组", R.drawable.ic_home),
-    MARKET("市场", R.drawable.ic_favorite),
-    LOADER("加载器", R.drawable.ic_extension),
-    SETTINGS("设置", R.drawable.ic_account_box),
+    MODS("模组", R.drawable.ic_nav_mods),
+    MARKET("市场", R.drawable.ic_nav_market),
+    LOADER("加载器", R.drawable.ic_nav_loader),
+    SETTINGS("设置", R.drawable.ic_nav_settings),
 }
 
 /**
@@ -59,7 +65,7 @@ fun ToysApp() {
                 Destination.entries.forEach { item ->
                     NavigationBarItem(
                         selected = item == destination,
-                        onClick = { destination = item },
+                        onClick = { if (destination != item) destination = item },
                         icon = { Icon(painterResource(item.icon), contentDescription = item.label) },
                         label = { Text(item.label) },
                     )
@@ -68,27 +74,42 @@ fun ToysApp() {
         },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            when (destination) {
-                Destination.MODS -> ModsScreen(
-                    controller = mods,
-                    onOpenSettings = { destination = Destination.SETTINGS },
-                )
+            // 切页用淡入 + 轻微上滑，比硬切更顺；时长压到 180ms，不拖手。
+            AnimatedContent(
+                targetState = destination,
+                transitionSpec = {
+                    val forward = targetState.ordinal > initialState.ordinal
+                    val slide = if (forward) {
+                        AnimatedContentTransitionScope.SlideDirection.Left
+                    } else {
+                        AnimatedContentTransitionScope.SlideDirection.Right
+                    }
+                    (slideIntoContainer(slide, animationSpec = tween(180)) + fadeIn(tween(180))) togetherWith
+                        (slideOutOfContainer(slide, animationSpec = tween(180)) + fadeOut(tween(120)))
+                },
+                label = "destination",
+            ) { target ->
+                when (target) {
+                    Destination.MODS -> ModsScreen(controller = mods)
 
-                Destination.MARKET -> MarketScreen(controller = market)
+                    Destination.MARKET -> MarketScreen(controller = market)
 
-                Destination.LOADER -> LoaderScreen(
-                    installer = installer,
-                    onLoaderChanged = { container.loader.invalidate() },
-                )
+                    Destination.LOADER -> LoaderScreen(
+                        installer = installer,
+                        mods = mods,
+                        onOpenSettings = { destination = Destination.SETTINGS },
+                        onLoaderChanged = { container.loader.invalidate() },
+                    )
 
-                Destination.SETTINGS -> SettingsScreen(
-                    settings = container.settings,
-                    onChanged = {
-                        market.reloadSettings()
-                        mods.reloadWorkspace()
-                    },
-                    onReviewConsent = { market.reviewConsent() },
-                )
+                    Destination.SETTINGS -> SettingsScreen(
+                        settings = container.settings,
+                        onChanged = {
+                            market.reloadSettings()
+                            mods.reloadWorkspace()
+                        },
+                        onReviewConsent = { market.reviewConsent() },
+                    )
+                }
             }
         }
     }

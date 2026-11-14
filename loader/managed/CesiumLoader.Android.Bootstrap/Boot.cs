@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 
 namespace CesiumLoader.Android.Bootstrap
 {
@@ -164,7 +165,76 @@ namespace CesiumLoader.Android.Bootstrap
             }
 
             log.AppendLine("done: ok=" + ok + " failed=" + failed);
+            StartConfigPoller(log);
             File.WriteAllText(_bootstrapLog, log.ToString());
+        }
+
+        /// <summary>
+        /// 配置热重载的驱动。
+        ///
+        /// SDK 里有 `ModConfig.PollAllChanged()`（比对文件时间戳、重新读、触发 Changed 事件），
+        /// 但它自己不带定时器 —— 桌面版由原生加载器线程驱动，安卓这边没人调，等于没有热重载。
+        /// 这里起一个后台线程每秒半问一次，App 写完 `configs/&lt;ModId&gt;.json` 就能立刻生效。
+        ///
+        /// 失败一律吞掉：配置写一半是正常情况，下一轮会再读到完整内容。
+        /// </summary>
+        private static void StartConfigPoller(StringBuilder log)
+        {
+            try
+            {
+                var thread = new Thread(ConfigPollerLoop);
+                thread.IsBackground = true;
+                thread.Start();
+                log.AppendLine("config poller: started");
+            }
+            catch (Exception error)
+            {
+                log.AppendLine("config poller error: " + Describe(error));
+            }
+        }
+
+        private const int ConfigPollIntervalMs = 1500;
+
+        private static void ConfigPollerLoop()
+        {
+            MethodInfo poll = null;
+            while (true)
+            {
+                try
+                {
+                    Thread.Sleep(ConfigPollIntervalMs);
+                    if (poll == null)
+                    {
+                        Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
+                        for (int i = 0; i < assemblies.Length; i++)
+                        {
+                            Assembly assembly = assemblies[i];
+                            if (assembly.GetName().Name != "CesiumLoader.SDK") continue;
+                            Type type = FindType(assembly, "CesiumLoader.SDK.Configuration.ModConfig");
+                            if (type != null) poll = type.GetMethod("PollAllChanged", BindingFlags.Public | BindingFlags.Static);
+                            break;
+                        }
+                        if (poll == null) continue;
+                    }
+                    poll.Invoke(null, null);
+                }
+                catch
+                {
+                    // 下一轮重新找一次方法：SDK 可能还没加载完，或配置正被改到一半。
+                    poll = null;
+                    try { Thread.Sleep(3000); } catch { }
+                }
+            }
+        }
+
+        private static Type FindType(Assembly assembly, string fullName)
+        {
+            Type[] types = GetTypes(assembly);
+            for (int i = 0; i < types.Length; i++)
+            {
+                if (types[i].FullName == fullName) return types[i];
+            }
+            return null;
         }
 
         private static string ResolveRoot()

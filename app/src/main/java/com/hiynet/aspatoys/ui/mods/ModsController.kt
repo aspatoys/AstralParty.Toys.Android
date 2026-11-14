@@ -7,6 +7,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.hiynet.aspatoys.data.AppContainer
 import com.hiynet.aspatoys.data.market.PackageCheckReport
+import com.hiynet.aspatoys.data.mods.ConfigField
+import com.hiynet.aspatoys.data.mods.ModConfigText
 import com.hiynet.aspatoys.data.mods.ModEntry
 import com.hiynet.aspatoys.data.mods.ModIssue
 import com.hiynet.aspatoys.data.mods.ModPackageException
@@ -26,6 +28,26 @@ data class DownloadedPackage(
     val sizeBytes: Long,
     val modifiedEpochMs: Long,
 )
+
+/** 模组配置编辑器的状态。 */
+data class ConfigEditorState(
+    val modId: String,
+    val title: String,
+    val path: String,
+    val loading: Boolean = true,
+    /** 原始文本：保存时原样写回，注释与顺序都保留。 */
+    val text: String = "",
+    val fields: List<ConfigField> = emptyList(),
+    val uneditable: List<String> = emptyList(),
+    /** 文本编辑模式（表单改不了的东西在这里改）。 */
+    val rawMode: Boolean = false,
+    val error: String? = null,
+    val saving: Boolean = false,
+    /** 文本被改过、还没保存。 */
+    val dirty: Boolean = false,
+) {
+    val editable: Boolean get() = fields.isNotEmpty() || rawMode
+}
 
 /**
  * 模组页状态：已装模组、下载目录里的模组包、单个包的检查与安装、单个模组的启停。
@@ -105,6 +127,9 @@ class ModsController(
     /** 同一时间只跑一次扫描，避免两次结果互相覆盖。 */
     private var refreshJob: Job? = null
 
+    /** 扫描序号；只有最新一次的结果才会写进界面。 */
+    private var scanTicket = 0
+
     /** 上一次扫描对应的数据版本；市场装完模组后版本会变，再进这一页需要重扫。 */
     private var scannedVersion = -1
 
@@ -130,13 +155,20 @@ class ModsController(
 
     /**
      * 扫一遍并把结果写进状态。启停之后也用这个对齐（此时不显示整页「刷新中」）。
+     *
+     * 每次扫描领一个号，只有**最新一次**的结果才会落地：一次扫描要跑几十条 shell 命令，
+     * 连点两下开关时旧的那次会晚到，直接写进去就会把刚翻好的开关顶回去 —— 这正是
+     * 「点了开关又自己弹回来」的来源。
      */
     private suspend fun scanNow() {
+        val ticket = ++scanTicket
         allFilesAccess = StorageAccess.hasAllFilesAccess(context)
         val loaderRoot = container.settings.loaderRoot
         loaderRootAccess = withContext(Dispatchers.IO) { StorageAccess.describe(loaderRoot) }
 
         val snapshot = withContext(Dispatchers.IO) { repo.scan() }
+        if (ticket != scanTicket) return
+
         installed = snapshot.entries
         installedSdkVersion = snapshot.sdkVersion
         issues = snapshot.issues
@@ -294,6 +326,112 @@ class ModsController(
 
     fun clearMessage() {
         message = null
+    }
+
+    // ============================== 模组配置 ==============================
+
+    /** 正在编辑配置的模组；null = 没开面板。 */
+    var configEditor by mutableStateOf<ConfigEditorState?>(null)
+        private set
+
+    /** 打开某个模组的配置面板。 */
+    fun openConfig(entry: ModEntry) {
+        val path = repo.configPath(entry.name)
+        configEditor = ConfigEditorState(
+            modId = entry.name,
+            title = entry.shownName,
+            path = path,
+            loading = true,
+        )
+        scope.launch {
+            val text = withContext(Dispatchers.IO) { repo.readConfig(entry.name) }
+            val current = configEditor ?: return@launch
+            if (current.modId != entry.name) return@launch
+            if (text == null) {
+                configEditor = current.copy(
+                    loading = false,
+                    error = "还没有配置文件。这个模组可能第一次运行游戏时才写出默认值；" +
+                        "改不了就先启动一次游戏。",
+                )
+                return@launch
+            }
+            val parsed = withContext(Dispatchers.Default) {
+                ModConfigText.parse(text, settings.language())
+            }
+            configEditor = current.copy(
+                loading = false,
+                text = text,
+                fields = parsed?.fields.orEmpty(),
+                uneditable = parsed?.uneditable.orEmpty(),
+                error = if (parsed == null) "配置不是合法 JSON，只能整段改文本。" else null,
+                rawMode = parsed == null,
+            )
+        }
+    }
+
+    fun closeConfig() {
+        configEditor = null
+    }
+
+    /** 文本编辑模式下的整段文本改动。 */
+    fun updateConfigText(text: String) {
+        val current = configEditor ?: return
+        val parsed = ModConfigText.parse(text, settings.language())
+        configEditor = current.copy(
+            text = text,
+            fields = parsed?.fields.orEmpty(),
+            uneditable = parsed?.uneditable.orEmpty(),
+            dirty = true,
+            error = if (parsed == null) "现在不是合法 JSON，保存会被拒绝。" else null,
+        )
+    }
+
+    fun setConfigRawMode(raw: Boolean) {
+        val current = configEditor ?: return
+        configEditor = current.copy(rawMode = raw)
+    }
+
+    /**
+     * 表单里改一个字段：就地替换文本里的那个值，其余（注释、空行、键顺序）原样不动。
+     */
+    fun updateConfigField(field: ConfigField, newToken: String) {
+        val current = configEditor ?: return
+        if (newToken == field.token) return
+        val patched = ModConfigText.patchValue(current.text, field.key, newToken)
+        if (patched == null) {
+            configEditor = current.copy(error = "改不动 ${field.key}：在文本里找不到它的值，请用文本编辑。")
+            return
+        }
+        val parsed = ModConfigText.parse(patched, settings.language())
+        configEditor = current.copy(
+            text = patched,
+            fields = parsed?.fields.orEmpty(),
+            uneditable = parsed?.uneditable.orEmpty(),
+            dirty = true,
+            error = null,
+        )
+    }
+
+    /** 保存到 `configs/<ModId>.json`；加载器会热重载（下一次轮询就生效）。 */
+    fun saveConfig() {
+        val current = configEditor ?: return
+        if (current.saving) return
+        if (ModConfigText.parse(current.text, settings.language()) == null) {
+            configEditor = current.copy(error = "不是合法 JSON，没保存。")
+            return
+        }
+        configEditor = current.copy(saving = true)
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { repo.writeConfig(current.modId, current.text) }
+                configEditor = configEditor?.copy(saving = false, dirty = false, error = null)
+                Toasts.show(context, "${current.title} 配置已保存")
+            } catch (failure: Exception) {
+                val text = "保存失败：${failure.message ?: failure::class.java.simpleName}"
+                configEditor = configEditor?.copy(saving = false, error = text)
+                Toasts.show(context, text)
+            }
+        }
     }
 
     private fun listPackages(): List<DownloadedPackage> {

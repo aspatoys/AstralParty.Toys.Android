@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -52,6 +53,8 @@ import com.hiynet.aspatoys.ui.components.CoverThumb
 import com.hiynet.aspatoys.ui.components.MessageBanner
 import com.hiynet.aspatoys.ui.components.PackageReportContent
 import com.hiynet.aspatoys.ui.components.Pill
+import com.hiynet.aspatoys.ui.components.SkeletonDetail
+import com.hiynet.aspatoys.ui.components.SkeletonList
 import com.hiynet.aspatoys.ui.format.Formats
 
 /**
@@ -112,7 +115,15 @@ fun MarketScreen(
         Box(modifier = Modifier.weight(1f)) {
             when {
                 !controller.consentGranted -> ConsentGateBox(onReview = controller::reviewConsent)
-                controller.loading && controller.items.isEmpty() -> LoadingBox("正在读取模组目录…")
+                // 首屏用骨架屏：先画出列表版式，比一句「正在读取」更像马上就有内容。
+                controller.loading && controller.items.isEmpty() -> LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    item { SkeletonList(count = 5, market = true) }
+                }
+
                 controller.items.isEmpty() && controller.error == null ->
                     EmptyBox("市场里没有匹配的模组。")
 
@@ -121,12 +132,12 @@ fun MarketScreen(
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    items(controller.items.size) { index ->
-                        val item = controller.items[index]
+                    items(controller.items, key = { it.summary.id }) { item ->
                         MarketRow(
                             item = item,
                             coverPath = controller.covers[item.summary.id],
                             onOpen = { controller.openDetail(item.summary.id) },
+                            modifier = Modifier.animateItem(),
                         )
                     }
                     if (controller.hasMore) {
@@ -315,10 +326,15 @@ private fun SortChip(label: String, value: String, controller: MarketController)
 }
 
 @Composable
-private fun MarketRow(item: MarketListItem, coverPath: String?, onOpen: () -> Unit) {
+private fun MarketRow(
+    item: MarketListItem,
+    coverPath: String?,
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val summary = item.summary
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
@@ -395,7 +411,7 @@ private fun MarketDetailSheet(controller: MarketController, detail: MarketModDet
         val error = controller.detailError
 
         if (loading && detail == null) {
-            LoadingBox("正在读取模组详情…")
+            SkeletonDetail()
         } else if (error != null) {
             MessageBanner(error)
         } else if (detail != null) {

@@ -121,9 +121,24 @@ class LoaderRepo(
         return result
     }
 
+    /** 配置文件的标准位置（写入永远走这里）。 */
+    fun configPath(modId: String): String = "${layout().configsRoot.absolutePath}/$modId.json"
+
+    /**
+     * 读玩家配置。
+     *
+     * 与加载器 SDK 的查找顺序一致：先 `configs/<ModId>.json`，再模组目录里的 `config.json`
+     * （没迁移过的旧安装）。两处都没有返回 null。
+     */
     fun readConfig(modId: String): String? {
         if (!ready()) return null
-        return installer.readConfig(layout(), modId)
+        val layout = layout()
+        fs.readText(configPath(modId))?.let { if (it.isNotBlank()) return it }
+        for (root in listOf(layout.modsRoot, layout.disabledModsRoot)) {
+            val text = fs.readText("${root.absolutePath}/$modId/config.json")
+            if (!text.isNullOrBlank()) return text
+        }
+        return null
     }
 
     fun writeConfig(modId: String, text: String) {

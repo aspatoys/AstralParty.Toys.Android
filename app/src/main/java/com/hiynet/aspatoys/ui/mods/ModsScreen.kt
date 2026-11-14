@@ -2,6 +2,13 @@ package com.hiynet.aspatoys.ui.mods
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -13,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -20,11 +28,11 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -46,19 +54,19 @@ import com.hiynet.aspatoys.data.mods.ModIssue
 import com.hiynet.aspatoys.ui.components.MessageBanner
 import com.hiynet.aspatoys.ui.components.PackageReportContent
 import com.hiynet.aspatoys.ui.components.Pill
+import com.hiynet.aspatoys.ui.components.SkeletonList
 import com.hiynet.aspatoys.ui.format.Formats
 
 /**
- * 模组页：工作区里的已装模组 + 下载目录里的模组包 + 本地包检查入口。
+ * 模组页：已装模组（启用/停用、配置）、下载目录里的模组包、本地包检查与安装。
  *
- * 工作区目录（游戏 `AstralParty_ModLoader` 的等价物）来自设置；模组项目的实际位置确定后，
- * 只需把设置里的路径指过去，本页不需要改代码。
+ * 加载器目录的信息（路径、SDK、读取方式）挪到「加载器」页：那些是加载器的状态，
+ * 放在模组列表上面只是挡路。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ModsScreen(
     controller: ModsController,
-    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var showReport by remember { mutableStateOf(false) }
@@ -72,30 +80,50 @@ fun ModsScreen(
     // 市场刚装完模组则因为数据版本变了而自动重扫。
     LaunchedEffect(Unit) { controller.onEnter() }
 
+    // 首次加载（还没有任何数据）用骨架屏，避免一片空白让人以为没有模组。
+    val showSkeleton = controller.scanning && controller.installed.isEmpty()
+
     Column(modifier = modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            item { WorkspaceCard(controller, onOpenSettings) }
-
-            if (controller.scanMode.isNotEmpty() || controller.scanError != null) {
-                item {
-                    Column {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "读取方式：${controller.scanMode}",
+                            "已装模组（${controller.installed.size}）",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            buildString {
+                                append("经 ${controller.scanMode.ifBlank { "…" }} 读取")
+                                controller.installedSdkVersion?.let { append(" · SDK ").append(it) }
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        controller.scanError?.let { error ->
-                            MessageBanner(
-                                text = error,
-                                container = MaterialTheme.colorScheme.errorContainer,
-                                content = MaterialTheme.colorScheme.onErrorContainer,
-                            )
-                        }
                     }
+                    OutlinedButton(onClick = controller::refresh, enabled = !controller.scanning) {
+                        Text(if (controller.scanning) "刷新中…" else "刷新")
+                    }
+                }
+            }
+
+            if (controller.scanError != null) {
+                item {
+                    MessageBanner(
+                        text = controller.scanError!!,
+                        container = MaterialTheme.colorScheme.errorContainer,
+                        content = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.animateContentSize(),
+                    )
                 }
             }
 
@@ -103,11 +131,15 @@ fun ModsScreen(
                 item { StorageAccessCard(controller) }
             }
 
-            if (controller.message != null) {
-                item {
+            item {
+                AnimatedVisibility(
+                    visible = controller.message != null,
+                    enter = fadeIn() + slideInVertically { -it / 2 },
+                    exit = fadeOut() + slideOutVertically { -it / 2 },
+                ) {
                     Column {
                         MessageBanner(
-                            text = controller.message!!,
+                            text = controller.message.orEmpty(),
                             container = MaterialTheme.colorScheme.secondaryContainer,
                             content = MaterialTheme.colorScheme.onSecondaryContainer,
                         )
@@ -122,17 +154,8 @@ fun ModsScreen(
             }
 
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Button(onClick = { pickZip.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }) {
-                        Text("选择 ZIP 检查")
-                    }
-                    OutlinedButton(onClick = controller::refresh, enabled = !controller.scanning) {
-                        Text(if (controller.scanning) "刷新中…" else "刷新")
-                    }
+                Button(onClick = { pickZip.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }) {
+                    Text("从文件安装模组包")
                 }
             }
 
@@ -148,29 +171,20 @@ fun ModsScreen(
                 items(issues.size) { index -> IssueCard(issues[index]) }
             }
 
-            item {
-                Spacer(Modifier.height(4.dp))
-                SectionHeader(
-                    title = "已装模组（${controller.installed.size}）",
-                    subtitle = if (controller.installedSdkVersion != null) {
-                        "加载器 SDK ${controller.installedSdkVersion}"
-                    } else {
-                        "未读到加载器 SDK 版本：SDK 兼容性检查已跳过"
-                    },
-                )
-            }
-            if (controller.installed.isEmpty()) {
-                item {
-                    EmptyHint("工作区里还没有模组。把 AstralParty_ModLoader 目录放到工作区，或先在市场下载模组包。")
+            if (showSkeleton) {
+                item { SkeletonList(count = 5) }
+            } else if (controller.installed.isEmpty()) {
+                item { EmptyHint("还没有模组。去市场装一个，或用上面的「从文件安装模组包」。") }
+            } else {
+                items(controller.installed, key = { it.name.lowercase() }) { entry ->
+                    InstalledModCard(
+                        entry = entry,
+                        busy = controller.busyModId == entry.name,
+                        onToggle = { enabled -> controller.setEnabled(entry, enabled) },
+                        onConfig = { controller.openConfig(entry) },
+                        modifier = Modifier.animateItem(),
+                    )
                 }
-            }
-            items(controller.installed.size) { index ->
-                val entry = controller.installed[index]
-                InstalledModCard(
-                    entry = entry,
-                    busy = controller.busyModId == entry.name,
-                    onToggle = { enabled -> controller.setEnabled(entry, enabled) },
-                )
             }
 
             item {
@@ -181,7 +195,7 @@ fun ModsScreen(
                 )
             }
             if (controller.packages.isEmpty()) {
-                item { EmptyHint("还没有下载的模组包。去市场下载，或用上面的「选择 ZIP 检查」。") }
+                item { EmptyHint("还没有下载的模组包。去市场点「下载并安装」就会出现在这里。") }
             }
             items(controller.packages.size) { index ->
                 val packageFile = controller.packages[index]
@@ -244,66 +258,18 @@ fun ModsScreen(
             }
         }
     }
-}
 
-@Composable
-private fun WorkspaceCard(controller: ModsController, onOpenSettings: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(14.dp),
-    ) {
-        Text("模组工作区", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(6.dp))
-        Text(
-            controller.loaderRootPath,
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+    val config = controller.configEditor
+    if (config != null) {
+        ModConfigSheet(
+            controller = controller,
+            state = config,
+            onDismiss = controller::closeConfig,
         )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            "模组目录：${controller.loaderRootPath.trimEnd('/')}/mods",
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            buildString {
-                append("已装 ${controller.installed.size} 个模组 · SDK ")
-                append(controller.installedSdkVersion ?: "未知")
-                // 直读不到不等于读不到：加载器在游戏私有目录里，正常路径就是经 Shizuku。
-                val access = controller.loaderRootAccess
-                val viaShizuku = controller.scanMode.startsWith("Shizuku")
-                if (viaShizuku) {
-                    append(" · 经 Shizuku 读取")
-                } else if (access != null) {
-                    append(" · ")
-                    append(
-                        when {
-                            !access.exists -> "目录不存在"
-                            !access.readable -> "不可读（缺权限）"
-                            !access.writable -> "只读"
-                            else -> "可读写"
-                        },
-                    )
-                }
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onOpenSettings) { Text("修改目录") }
-            OutlinedButton(onClick = controller::refreshAccess) { Text("重新检测") }
-        }
     }
 }
 
-/** 没有「所有文件访问权限」时的提示：加载器目录在 /sdcard 下，读写它必须授权。 */
+/** 没有「所有文件访问权限」时的提示：加载器目录在游戏私有目录里，读写必须经 Shizuku。 */
 @Composable
 private fun StorageAccessCard(controller: ModsController) {
     Column(
@@ -387,13 +353,20 @@ private fun IssueCard(issue: ModIssue) {
 }
 
 @Composable
-private fun InstalledModCard(entry: ModEntry, busy: Boolean, onToggle: (Boolean) -> Unit) {
+private fun InstalledModCard(
+    entry: ModEntry,
+    busy: Boolean,
+    onToggle: (Boolean) -> Unit,
+    onConfig: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(12.dp),
+            .padding(12.dp)
+            .animateContentSize(),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -404,13 +377,21 @@ private fun InstalledModCard(entry: ModEntry, busy: Boolean, onToggle: (Boolean)
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            if (!entry.enabled) {
-                Pill("停用", MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.width(6.dp))
+            AnimatedVisibility(visible = !entry.enabled) {
+                Row {
+                    Pill("停用", MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.width(6.dp))
+                }
             }
             Pill("v${entry.version.ifBlank { "?" }}")
             Spacer(Modifier.width(8.dp))
-            Switch(checked = entry.enabled, enabled = !busy, onCheckedChange = onToggle)
+            // 正在切换时只加一个小转圈，不把开关置灰：置灰的开关既分不清「在忙」还是「不可用」，
+            // 也会让配色看起来像状态出错。重复点由控制器挡掉。
+            if (busy) {
+                CircularProgressIndicator(modifier = Modifier.height(18.dp).width(18.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+            }
+            Switch(checked = entry.enabled, onCheckedChange = onToggle)
         }
         Spacer(Modifier.height(4.dp))
         Text(
@@ -450,6 +431,9 @@ private fun InstalledModCard(entry: ModEntry, busy: Boolean, onToggle: (Boolean)
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+        TextButton(onClick = onConfig, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+            Text("设置")
         }
     }
 }
