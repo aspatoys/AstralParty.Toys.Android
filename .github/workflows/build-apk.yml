@@ -1,0 +1,115 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      loader_tag:
+        description: "加载器发行版标签（留空取 CesiumLoader 最新发行版）"
+        required: false
+      injected_url:
+        description: "注入后的游戏程序集下载地址（留空取本仓库 payload 发行版的资产）"
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  LOADER_REPO: higashitaniyume/CesiumLoader
+  # 与当前游戏热更版本绑定的注入产物放在这个发行版里，游戏更新后替换它即可。
+  PAYLOAD_TAG: payload
+
+jobs:
+  build:
+    name: Build debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK platform
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install "platform-tools" "platforms;android-37" "build-tools;37.0.0"
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build the managed bootstrap
+        run: dotnet build loader/managed/CesiumLoader.Android.Bootstrap -c Release --nologo
+
+      - name: Resolve the loader release
+        id: loader
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.loader_tag }}"
+          if [ -z "$tag" ]; then
+            tag="$(gh api "repos/$LOADER_REPO/releases/latest" --jq .tag_name)"
+          fi
+          version="${tag#modloader-}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          mkdir -p loaderpkg
+          gh release download "$tag" --repo "$LOADER_REPO" \
+            --pattern "cesium-loader-${version}.zip" --dir loaderpkg
+          echo "zip=$PWD/loaderpkg/cesium-loader-${version}.zip" >> "$GITHUB_OUTPUT"
+          echo "loader=$version"
+
+      - name: Fetch the injected game assembly
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p payload
+          url="${{ inputs.injected_url }}"
+          if [ -n "$url" ]; then
+            curl -fsSL "$url" -o payload/AstralParty.Runtime.injected.dll
+          else
+            gh release download "$PAYLOAD_TAG" --repo "${{ github.repository }}" \
+              --pattern "AstralParty.Runtime.injected.dll" --dir payload
+          fi
+          ls -l payload
+
+      - name: Build and test
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --console=plain \
+            -PcesiumReleaseZip="${{ steps.loader.outputs.zip }}" \
+            -PcesiumSdkDll="$PWD/loaderpkg/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" \
+            -PcesiumBootstrapDll="$PWD/loader/managed/CesiumLoader.Android.Bootstrap/bin/Release/netstandard2.0/CesiumLoader.Android.Bootstrap.dll" \
+            -PcesiumInjectedDll="$PWD/payload/AstralParty.Runtime.injected.dll" \
+            :app:testDebugUnitTest :app:assembleDebug
+
+      - name: Show loader version in the build
+        shell: bash
+        run: cat app/src/main/assets/cesium/loader.json
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: aspatoys-debug-${{ steps.loader.outputs.tag }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
