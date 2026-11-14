@@ -18,6 +18,12 @@ captures/
 # 注入后的 AstralParty.Runtime 属于游戏内容且与版本绑定。
 /app/src/main/assets/cesium/
 
+# loader 子目录里的构建产物（dotnet / python）
+/loader/**/bin/
+/loader/**/obj/
+/loader/**/__pycache__/
+/loader/build/
+
 # 打包产物
 *.apk
 *.aab

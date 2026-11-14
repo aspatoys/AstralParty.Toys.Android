@@ -25,6 +25,6 @@ dependencyResolutionManagement {
 rootProject.name = "Astral Party Toys"
 include(":app")
 
-// 加载器核心（容器读写、盘上布局、启用索引）与加载器仓库共用一份源码，避免两套实现漂移。
+// 加载器核心（容器读写、盘上布局、启用索引）：随本仓库一起维护，
+// 不再跨仓库 include，避免插件版本与产物同步两处漂移。
 include(":cesiumcore")
-project(":cesiumcore").projectDir = file("../android_cesiumloader/core")
