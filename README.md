@@ -52,10 +52,6 @@ git tag v1.0.1 && git push origin v1.0.1
 - 加载器本体、SDK 与内置模组：[CesiumLoader](https://github.com/higashitaniyume/CesiumLoader)
 - 桌面版模组管理器：[AstralParty.Toys](https://github.com/higashitaniyume/AstralParty.Toys)
 
-## 贡献者
-
-- [TenkinMori](https://github.com/TenkinMori)：平板横屏 / 响应式布局、市场分页
-
 ## 许可
 
 AGPL-3.0，见 [LICENSE](LICENSE)。
