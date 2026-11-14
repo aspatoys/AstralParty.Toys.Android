@@ -34,29 +34,24 @@ object RootShell {
         "su",
     )
 
+    @Synchronized
     fun isAvailable(): Boolean {
-        if (!resolved) {
-            synchronized(this) {
-                if (!resolved) detect()
-            }
-        }
+        if (!resolved) detect()
         return available
     }
 
     fun modeName(): String = if (isAvailable()) "Root" else "Shizuku"
 
     /** 设置页切回自动/重新检测时调用。 */
+    @Synchronized
     fun reset() {
-        synchronized(this) {
-            resolved = false
-            available = false
-            suPath = null
-            lastError = null
-        }
+        resolved = false
+        available = false
+        suPath = null
+        lastError = null
     }
 
     private fun detect() {
-        resolved = true
         lastError = null
         for (candidate in candidates) {
             val result = runCatching { probe(candidate) }.getOrElse { error ->
@@ -66,10 +61,12 @@ object RootShell {
             if (result == true) {
                 suPath = candidate
                 available = true
+                resolved = true
                 return
             }
         }
         available = false
+        resolved = true
         if (lastError == null) lastError = "没有找到可用的 su"
     }
 
