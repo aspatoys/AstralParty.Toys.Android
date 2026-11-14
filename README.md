@@ -8,7 +8,7 @@
 - **已装模组**：列表、启用/停用、版本与依赖检查；每个模组可以改配置（表单或整段文本），保存后支持热重载的模组立即生效。
 - **模组设置**：字段说明取自模组自带的 `_comments`（简中/繁中/英文/日文），改值只改对应字节，注释与键顺序都会保留。
 - **加载器安装**：把引导注入游戏的热更缓存、投放 SDK 与内置模组，可一键还原原包。
-- 骨架屏加载、竖屏、深浅色主题。
+- 骨架屏加载、手机竖屏 / 平板横屏自适应、深浅色主题。
 
 ## 使用前提
 
@@ -51,6 +51,10 @@ git tag v1.0.1 && git push origin v1.0.1
 
 - 加载器本体、SDK 与内置模组：[CesiumLoader](https://github.com/higashitaniyume/CesiumLoader)
 - 桌面版模组管理器：[AstralParty.Toys](https://github.com/higashitaniyume/AstralParty.Toys)
+
+## 贡献者
+
+- [TenkinMori](https://github.com/TenkinMori)：平板横屏 / 响应式布局、市场分页
 
 ## 许可
 
