@@ -3,21 +3,13 @@ name: Build APK
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - "**.md"
+    tags: ["v*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      loader_tag:
-        description: "加载器发行版标签（留空取 CesiumLoader 最新发行版）"
-        required: false
-      injected_url:
-        description: "注入后的游戏程序集下载地址（留空取本仓库 payload 发行版的资产）"
-        required: false
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   LOADER_REPO: higashitaniyume/CesiumLoader
@@ -26,11 +18,25 @@ env:
 
 jobs:
   build:
-    name: Build debug APK
+    name: Build APK
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            name="${GITHUB_REF_NAME#v}"
+          else
+            name="0.0.0-dev.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "code=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
+          echo "version=$name"
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -42,11 +48,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # 运行器自带 cmdline-tools 与 ANDROID_HOME；setup-android 会去装已被移除的
-          # "tools" 包而直接失败，所以这里只用 sdkmanager 补平台与 build-tools。
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager --install "platform-tools" "platforms;android-37" "build-tools;37.0.0"
-          ls "$ANDROID_HOME/platforms"
+          # 运行器自带 Android SDK 与 cmdline-tools，只是 sdkmanager 不在 PATH 上，
+          # 而且 setup-android 会去装已被移除的 "tools" 包，所以这里直接找 sdkmanager。
+          sdkmanager="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}" -name sdkmanager -type f | head -n 1)"
+          test -n "$sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" --install "platform-tools" "platforms;android-37" "build-tools;37.0.0"
+          ls "${ANDROID_HOME:-/usr/local/lib/android/sdk}/platforms"
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
@@ -69,11 +77,12 @@ jobs:
           fi
           version="${tag#modloader-}"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           mkdir -p loaderpkg
           gh release download "$tag" --repo "$LOADER_REPO" \
             --pattern "cesium-loader-${version}.zip" --dir loaderpkg
           echo "zip=$PWD/loaderpkg/cesium-loader-${version}.zip" >> "$GITHUB_OUTPUT"
-          echo "loader=$version"
+          echo "加载器 $version"
 
       - name: Fetch the injected game assembly
         shell: bash
@@ -97,19 +106,43 @@ jobs:
           set -euo pipefail
           chmod +x gradlew
           ./gradlew --no-daemon --console=plain \
+            -PappVersionName="${{ steps.version.outputs.name }}" \
+            -PappVersionCode="${{ steps.version.outputs.code }}" \
             -PcesiumReleaseZip="${{ steps.loader.outputs.zip }}" \
             -PcesiumSdkDll="$PWD/loaderpkg/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" \
             -PcesiumBootstrapDll="$PWD/loader/managed/CesiumLoader.Android.Bootstrap/bin/Release/netstandard2.0/CesiumLoader.Android.Bootstrap.dll" \
             -PcesiumInjectedDll="$PWD/payload/AstralParty.Runtime.injected.dll" \
             :app:testDebugUnitTest :app:assembleDebug
 
-      - name: Show loader version in the build
+      - name: Show bundled loader version
         shell: bash
         run: cat app/src/main/assets/cesium/loader.json
 
-      - name: Upload APK
+      - name: Name the APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp app/build/outputs/apk/debug/app-debug.apk \
+             "aspatoys-${{ steps.version.outputs.name }}.apk"
+          ls -l aspatoys-*.apk
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: aspatoys-debug-${{ steps.loader.outputs.tag }}
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: aspatoys-${{ steps.version.outputs.name }}
+          path: aspatoys-${{ steps.version.outputs.name }}.apk
           if-no-files-found: error
+
+      - name: Publish release
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          notes=$(printf '内置加载器：`%s`\n\n- 安装前需在设备上运行 Shizuku 并授权\n- 首次使用请在「加载器」页点「安装加载器」\n- 已装模组与市场可在应用内管理\n' "${{ steps.loader.outputs.version }}")
+          gh release create "$GITHUB_REF_NAME" "aspatoys-${{ steps.version.outputs.name }}.apk" \
+            --repo "${{ github.repository }}" \
+            --title "Astral Party Toys Android ${{ steps.version.outputs.name }}" \
+            --notes "$notes" \
+            --latest

@@ -11,12 +11,16 @@ android {
         version = release(37)
     }
 
+    // 版本号由 CI 传入（tag 发布时取 tag 名），本地构建用默认值。
+    val appVersionName = (project.findProperty("appVersionName") as String?)?.takeIf { it.isNotBlank() } ?: "1.0"
+    val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 1
+
     defaultConfig {
         applicationId = "com.hiynet.aspatoys"
         minSdk = 31
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
