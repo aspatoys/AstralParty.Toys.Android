@@ -252,20 +252,31 @@ class LoaderInstaller(private val context: Context) {
         log("installed.json 已写入（${modIds.size} 个内置模组）")
     }
 
-    /** 发行版的内置模组：`cesium/mods/<ModId>/<ModId>.dll` + sidecar，按一模组一目录投放。 */
+    /** 发行版的内置模组：按一模组一目录投放，允许 `data/` 等子目录。 */
     private fun deployBuiltInMods(log: (String) -> Unit) {
         val modIds = context.assets.list(MODS_ASSET_DIR).orEmpty()
             .filterNot { it == "LanguageUnlockMod" }
             .sorted()
         var files = 0
-        for (modId in modIds) {
-            val names = context.assets.list("$MODS_ASSET_DIR/$modId").orEmpty().sorted()
-            if (names.isEmpty()) continue
-            ShizukuShell.exec("mkdir -p " + ShizukuShell.quote("$LOADER_ROOT/mods/$modId"))
-            for (name in names) {
-                pushAsset("$MODS_ASSET_DIR/$modId/$name", "mods/$modId/$name")
-                files++
+
+        fun deployDir(assetDir: String, relativeDir: String) {
+            for (name in context.assets.list(assetDir).orEmpty().sorted()) {
+                val asset = "$assetDir/$name"
+                val relative = "$relativeDir/$name"
+                if (context.assets.list(asset).orEmpty().isNotEmpty()) {
+                    deployDir(asset, relative)
+                } else {
+                    pushAsset(asset, relative)
+                    files++
+                }
             }
+        }
+
+        for (modId in modIds) {
+            ShizukuShell.exec("mkdir -p " + ShizukuShell.quote("$LOADER_ROOT/mods/$modId"))
+            val names = context.assets.list("$MODS_ASSET_DIR/$modId").orEmpty()
+            if (names.isEmpty()) continue
+            deployDir("$MODS_ASSET_DIR/$modId", "mods/$modId")
         }
         log("内置模组 ${modIds.size} 个 / $files 个文件")
     }
@@ -274,8 +285,11 @@ class LoaderInstaller(private val context: Context) {
         val local = File(workDir, relative)
         local.parentFile?.mkdirs()
         context.assets.open(asset).use { input -> local.outputStream().use { input.copyTo(it) } }
+        val remote = "$LOADER_ROOT/$relative"
+        val remoteDir = remote.substringBeforeLast('/')
+        ShizukuShell.exec("mkdir -p " + ShizukuShell.quote(remoteDir))
         ShizukuShell.exec(
-            "cat " + ShizukuShell.quote(local.absolutePath) + " > " + ShizukuShell.quote("$LOADER_ROOT/$relative"),
+            "cat " + ShizukuShell.quote(local.absolutePath) + " > " + ShizukuShell.quote(remote),
         )
     }
 
