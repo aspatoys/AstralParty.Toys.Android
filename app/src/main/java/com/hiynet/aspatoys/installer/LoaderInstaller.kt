@@ -229,7 +229,9 @@ class LoaderInstaller(private val context: Context) {
 
     /** 记下这次的装载状态：加载器版本、SDK 版本、内置模组清单，供模组页与 SDK 门槛检查读取。 */
     private fun writeInstalledIndex(log: (String) -> Unit) {
-        val modIds = context.assets.list(MODS_ASSET_DIR).orEmpty().sorted()
+        val modIds = context.assets.list(MODS_ASSET_DIR).orEmpty()
+            .filterNot { it == "LanguageUnlockMod" }
+            .sorted()
         val version = loaderVersion()
         val payload = buildString {
             appendLine("{")
@@ -252,7 +254,9 @@ class LoaderInstaller(private val context: Context) {
 
     /** 发行版的内置模组：`cesium/mods/<ModId>/<ModId>.dll` + sidecar，按一模组一目录投放。 */
     private fun deployBuiltInMods(log: (String) -> Unit) {
-        val modIds = context.assets.list(MODS_ASSET_DIR).orEmpty().sorted()
+        val modIds = context.assets.list(MODS_ASSET_DIR).orEmpty()
+            .filterNot { it == "LanguageUnlockMod" }
+            .sorted()
         var files = 0
         for (modId in modIds) {
             val names = context.assets.list("$MODS_ASSET_DIR/$modId").orEmpty().sorted()
