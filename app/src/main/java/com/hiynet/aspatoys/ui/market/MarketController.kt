@@ -97,6 +97,12 @@ class MarketController(
     private var loadedPage = 0
     private var cancellation: HttpCancellation? = null
 
+    /** 当前页码；翻页由 [goToPage] 负责替换列表，不再只追加。 */
+    var page by mutableStateOf(1)
+        private set
+
+    val pageCount: Int get() = if (total <= 0) 1 else (total + PageSize - 1) / PageSize
+
     val hasMore: Boolean get() = items.size < total
 
     // ============================== 目录 ==============================
@@ -108,15 +114,16 @@ class MarketController(
         error = null
         scope.launch {
             try {
-                val page = withContext(Dispatchers.IO) {
+                val result = withContext(Dispatchers.IO) {
                     client.list(baseUrl, settings.language(), query, tag, sort, 1, PageSize)
                 }
                 val installed = withContext(Dispatchers.IO) { installedIndex() }
-                items = page.items.map { summary -> toListItem(summary, installed) }
-                tags = page.tags
-                total = page.total
+                items = result.items.map { summary -> toListItem(summary, installed) }
+                tags = result.tags
+                total = result.total
                 loadedPage = 1
-                loadCovers(page.items)
+                page = 1
+                loadCovers(result.items)
             } catch (cancelled: HttpCancelledException) {
                 message = "已取消。"
             } catch (failure: MarketException) {
@@ -151,6 +158,35 @@ class MarketController(
                 error = "加载更多失败：${failure.message}"
             } finally {
                 loadingMore = false
+            }
+        }
+    }
+
+    fun goToPage(target: Int) {
+        if (loading || loadingMore) return
+        if (!requireConsent()) return
+        val next = target.coerceIn(1, pageCount)
+        if (next == page) return
+        loading = true
+        error = null
+        scope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    client.list(baseUrl, settings.language(), query, tag, sort, next, PageSize)
+                }
+                val installed = withContext(Dispatchers.IO) { installedIndex() }
+                items = result.items.map { summary -> toListItem(summary, installed) }
+                tags = result.tags
+                total = result.total
+                loadedPage = next
+                page = next
+                loadCovers(result.items)
+            } catch (failure: MarketException) {
+                error = failure.message
+            } catch (failure: Exception) {
+                error = "翻页失败：${failure.message}"
+            } finally {
+                loading = false
             }
         }
     }

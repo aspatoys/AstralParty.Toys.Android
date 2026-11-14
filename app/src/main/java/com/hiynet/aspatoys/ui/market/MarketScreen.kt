@@ -5,15 +5,18 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -31,6 +34,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -45,6 +49,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.hiynet.aspatoys.data.market.MarketListItem
 import com.hiynet.aspatoys.data.market.MarketModDetail
 import com.hiynet.aspatoys.data.market.MarketModVersion
@@ -77,174 +83,230 @@ fun MarketScreen(
         if (controller.consentGranted && controller.items.isEmpty() && !controller.loading) controller.refresh()
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        MarketSearchBar(controller)
-        MarketFilters(controller)
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val wide = maxWidth >= 900.dp
+        val detail = controller.detail
+        val detailOpen = detail != null || controller.detailLoading || controller.detailError != null
 
-        if (controller.message != null) {
-            MessageBanner(
-                text = controller.message!!,
-                container = MaterialTheme.colorScheme.secondaryContainer,
-                content = MaterialTheme.colorScheme.onSecondaryContainer,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                TextButton(onClick = controller::clearMessage) { Text("知道了") }
-            }
-        }
+        Column(modifier = Modifier.fillMaxSize()) {
+            MarketSearchBar(controller)
+            MarketFilters(controller)
 
-        if (controller.error != null && controller.items.isEmpty()) {
-            MessageBanner(
-                text = controller.error!!,
-                modifier = Modifier.padding(12.dp),
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Button(onClick = controller::refresh) { Text("重试") }
-                OutlinedButton(onClick = controller::clearError) { Text("关闭") }
-            }
-        }
-
-        Box(modifier = Modifier.weight(1f)) {
-            when {
-                !controller.consentGranted -> ConsentGateBox(onReview = controller::reviewConsent)
-                // 首屏用骨架屏：先画出列表版式，比一句「正在读取」更像马上就有内容。
-                controller.loading && controller.items.isEmpty() -> LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+            if (controller.message != null) {
+                MessageBanner(
+                    text = controller.message!!,
+                    container = MaterialTheme.colorScheme.secondaryContainer,
+                    content = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
                 ) {
-                    item { SkeletonList(count = 5, market = true) }
+                    TextButton(onClick = controller::clearMessage) { Text("知道了") }
                 }
+            }
 
-                controller.items.isEmpty() && controller.error == null ->
-                    EmptyBox("市场里没有匹配的模组。")
-
-                else -> LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+            if (controller.error != null && controller.items.isEmpty()) {
+                MessageBanner(
+                    text = controller.error!!,
+                    modifier = Modifier.padding(12.dp),
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(controller.items, key = { it.summary.id }) { item ->
-                        MarketRow(
-                            item = item,
-                            coverPath = controller.covers[item.summary.id],
-                            onOpen = { controller.openDetail(item.summary.id) },
-                            modifier = Modifier.animateItem(),
-                        )
+                    Button(onClick = controller::refresh) { Text("重试") }
+                    OutlinedButton(onClick = controller::clearError) { Text("关闭") }
+                }
+            }
+
+            Box(modifier = Modifier.weight(1f)) {
+                when {
+                    !controller.consentGranted -> ConsentGateBox(onReview = controller::reviewConsent)
+                    // 首屏用骨架屏：先画出列表版式，比一句「正在读取」更像马上就有内容。
+                    controller.loading && controller.items.isEmpty() -> LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        item { SkeletonList(count = 5, market = true) }
                     }
-                    if (controller.hasMore) {
-                        item {
+
+                    controller.items.isEmpty() && controller.error == null ->
+                        EmptyBox("市场里没有匹配的模组。")
+
+                    else -> LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        items(controller.items, key = { it.summary.id }) { item ->
+                            MarketRow(
+                                item = item,
+                                coverPath = controller.covers[item.summary.id],
+                                onOpen = { controller.openDetail(item.summary.id) },
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                        item { MarketPager(controller) }
+                    }
+                }
+            }
+        }
+
+        if (controller.showConsent) {
+            MarketConsentDialog(
+                baseUrl = controller.baseUrl,
+                onAccept = controller::acceptConsent,
+                onDismiss = controller::dismissConsent,
+            )
+        }
+
+        if (detailOpen) {
+            if (wide) {
+                Dialog(
+                    onDismissRequest = controller::closeDetail,
+                    properties = DialogProperties(usePlatformDefaultWidth = false),
+                ) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .fillMaxHeight(0.9f)
+                            .widthIn(max = 760.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        tonalElevation = 6.dp,
+                    ) {
+                        Column {
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                if (controller.loadingMore) {
-                                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                                } else {
-                                    OutlinedButton(onClick = controller::loadMore) { Text("加载更多") }
-                                }
+                                Text(
+                                    "模组详情",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Spacer(Modifier.weight(1f))
+                                TextButton(onClick = controller::closeDetail) { Text("关闭") }
                             }
+                            MarketDetailSheet(controller, detail)
                         }
                     }
                 }
+            } else {
+                ModalBottomSheet(
+                    onDismissRequest = controller::closeDetail,
+                    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                ) {
+                    MarketDetailSheet(controller, detail)
+                }
             }
         }
-    }
 
-    if (controller.showConsent) {
-        MarketConsentDialog(
-            baseUrl = controller.baseUrl,
-            onAccept = controller::acceptConsent,
-            onDismiss = controller::dismissConsent,
-        )
-    }
-
-    val detail = controller.detail
-    if (detail != null || controller.detailLoading || controller.detailError != null) {
-        ModalBottomSheet(
-            onDismissRequest = controller::closeDetail,
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        ) {
-            MarketDetailSheet(controller, detail)
-        }
-    }
-
-    controller.download?.let { state ->
-        AlertDialog(
-            onDismissRequest = { /* 下载中不允许点外部关闭 */ },
-            title = { Text(state.modName) },
-            text = {
-                Column {
-                    Text("${state.phaseText}  v${state.version}")
-                    Spacer(Modifier.height(12.dp))
-                    val fraction = state.fraction
-                    if (fraction != null) {
-                        LinearProgressIndicator(
-                            progress = { fraction },
-                            modifier = Modifier.fillMaxWidth(),
+        controller.download?.let { state ->
+            AlertDialog(
+                onDismissRequest = { /* 下载中不允许点外部关闭 */ },
+                title = { Text(state.modName) },
+                text = {
+                    Column {
+                        Text("${state.phaseText}  v${state.version}")
+                        Spacer(Modifier.height(12.dp))
+                        val fraction = state.fraction
+                        if (fraction != null) {
+                            LinearProgressIndicator(
+                                progress = { fraction },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        } else {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            Formats.progressText(state.received, state.total, state.percent),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                    } else {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        Formats.progressText(state.received, state.total, state.percent),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
-            confirmButton = {
-                if (state.cancellable) {
-                    TextButton(onClick = controller::cancelDownload) { Text("取消") }
-                }
-            },
-        )
-    }
+                },
+                confirmButton = {
+                    if (state.cancellable) {
+                        TextButton(onClick = controller::cancelDownload) { Text("取消") }
+                    }
+                },
+            )
+        }
 
-    val report = controller.report
-    if (showReport && report != null) {
-        ModalBottomSheet(
-            onDismissRequest = {
-                showReport = false
-                controller.dismissReport()
-            },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp)
-                    .padding(bottom = 28.dp),
+        val report = controller.report
+        if (showReport && report != null) {
+            Dialog(
+                onDismissRequest = {
+                    showReport = false
+                    controller.dismissReport()
+                },
+                properties = DialogProperties(usePlatformDefaultWidth = false),
             ) {
-                PackageReportContent(report)
-                if (report.success) {
-                    Spacer(Modifier.height(16.dp))
-                    Button(
-                        onClick = { controller.installReport() },
-                        enabled = controller.download == null,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("写入加载器") }
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .fillMaxHeight(0.85f)
+                        .widthIn(max = 720.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    tonalElevation = 6.dp,
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 20.dp, vertical = 16.dp),
+                    ) {
+                        PackageReportContent(report)
+                        if (report.success) {
+                            Spacer(Modifier.height(16.dp))
+                            Button(
+                                onClick = { controller.installReport() },
+                                enabled = controller.download == null,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text("写入加载器") }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        OutlinedButton(
+                            onClick = {
+                                showReport = false
+                                controller.dismissReport()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("完成") }
+                    }
                 }
-                Spacer(Modifier.height(16.dp))
-                OutlinedButton(
-                    onClick = {
-                        showReport = false
-                        controller.dismissReport()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("完成") }
             }
         }
+    }
+}
+
+@Composable
+private fun MarketPager(controller: MarketController) {
+    if (controller.items.isEmpty()) return
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OutlinedButton(
+            onClick = { controller.goToPage(controller.page - 1) },
+            enabled = controller.page > 1 && !controller.loading,
+        ) { Text("上一页") }
+        Text(
+            "  第 ${controller.page} / ${controller.pageCount} 页 · 共 ${controller.total} 个  ",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedButton(
+            onClick = { controller.goToPage(controller.page + 1) },
+            enabled = controller.page < controller.pageCount && !controller.loading,
+        ) { Text("下一页") }
     }
 }
 

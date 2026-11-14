@@ -7,11 +7,22 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,9 +32,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import com.hiynet.aspatoys.R
 import com.hiynet.aspatoys.data.AppContainer
 import com.hiynet.aspatoys.installer.LoaderInstaller
@@ -43,9 +56,10 @@ enum class Destination(val label: String, val icon: Int) {
 }
 
 /**
- * App 外壳：装配依赖、持有页面状态、按底部导航切换页面。
+ * App 外壳：装配依赖、持有页面状态、按窗口宽度切换导航。
  *
- * 状态放在这里而不是各页面内部：切页不重建控制器，市场列表与下载状态不会丢。
+ * 手机竖屏用底部导航；平板/横屏（>= 900dp）改用左侧 NavigationRail，
+ * 让内容拿到完整高度，市场页也能左右分栏。
  */
 @Composable
 fun ToysApp() {
@@ -58,58 +72,132 @@ fun ToysApp() {
 
     var destination by rememberSaveable { mutableStateOf(Destination.MODS) }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        bottomBar = {
-            NavigationBar {
-                Destination.entries.forEach { item ->
-                    NavigationBarItem(
-                        selected = item == destination,
-                        onClick = { if (destination != item) destination = item },
-                        icon = { Icon(painterResource(item.icon), contentDescription = item.label) },
-                        label = { Text(item.label) },
-                    )
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val wide = maxWidth >= 900.dp
+
+        if (wide) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing),
+            ) {
+                NavigationRail {
+                    Spacer(Modifier.height(12.dp))
+                    Destination.entries.forEach { item ->
+                        NavigationRailItem(
+                            selected = item == destination,
+                            onClick = { if (destination != item) destination = item },
+                            icon = { Icon(painterResource(item.icon), contentDescription = item.label) },
+                            label = { Text(item.label) },
+                        )
+                    }
+                }
+                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    if (destination == Destination.MARKET) {
+                        DestinationContent(
+                            destination = destination,
+                            market = market,
+                            mods = mods,
+                            installer = installer,
+                            container = container,
+                            onOpenSettings = { destination = Destination.SETTINGS },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.TopCenter,
+                        ) {
+                            DestinationContent(
+                                destination = destination,
+                                market = market,
+                                mods = mods,
+                                installer = installer,
+                                container = container,
+                                onOpenSettings = { destination = Destination.SETTINGS },
+                                modifier = Modifier
+                                    .widthIn(max = 980.dp)
+                                    .fillMaxHeight(),
+                            )
+                        }
+                    }
                 }
             }
-        },
-    ) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            // 切页用淡入 + 轻微上滑，比硬切更顺；时长压到 180ms，不拖手。
-            AnimatedContent(
-                targetState = destination,
-                transitionSpec = {
-                    val forward = targetState.ordinal > initialState.ordinal
-                    val slide = if (forward) {
-                        AnimatedContentTransitionScope.SlideDirection.Left
-                    } else {
-                        AnimatedContentTransitionScope.SlideDirection.Right
+        } else {
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                bottomBar = {
+                    NavigationBar {
+                        Destination.entries.forEach { item ->
+                            NavigationBarItem(
+                                selected = item == destination,
+                                onClick = { if (destination != item) destination = item },
+                                icon = { Icon(painterResource(item.icon), contentDescription = item.label) },
+                                label = { Text(item.label) },
+                            )
+                        }
                     }
-                    (slideIntoContainer(slide, animationSpec = tween(180)) + fadeIn(tween(180))) togetherWith
-                        (slideOutOfContainer(slide, animationSpec = tween(180)) + fadeOut(tween(120)))
                 },
-                label = "destination",
-            ) { target ->
-                when (target) {
-                    Destination.MODS -> ModsScreen(controller = mods)
+            ) { innerPadding ->
+                DestinationContent(
+                    destination = destination,
+                    market = market,
+                    mods = mods,
+                    installer = installer,
+                    container = container,
+                    onOpenSettings = { destination = Destination.SETTINGS },
+                    modifier = Modifier.fillMaxSize().padding(innerPadding),
+                )
+            }
+        }
+    }
+}
 
-                    Destination.MARKET -> MarketScreen(controller = market)
-
-                    Destination.LOADER -> LoaderScreen(
-                        installer = installer,
-                        mods = mods,
-                        onOpenSettings = { destination = Destination.SETTINGS },
-                        onLoaderChanged = { container.loader.invalidate() },
-                    )
-
-                    Destination.SETTINGS -> SettingsScreen(
-                        settings = container.settings,
-                        onChanged = {
-                            market.reloadSettings()
-                            mods.reloadWorkspace()
-                        },
-                        onReviewConsent = { market.reviewConsent() },
-                    )
+@Composable
+private fun DestinationContent(
+    destination: Destination,
+    market: MarketController,
+    mods: ModsController,
+    installer: LoaderInstaller,
+    container: AppContainer,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier,
+) {
+    Box(modifier = modifier) {
+        AnimatedContent(
+            targetState = destination,
+            transitionSpec = {
+                val forward = targetState.ordinal > initialState.ordinal
+                val slide = if (forward) {
+                    AnimatedContentTransitionScope.SlideDirection.Left
+                } else {
+                    AnimatedContentTransitionScope.SlideDirection.Right
                 }
+                (slideIntoContainer(slide, animationSpec = tween(180)) + fadeIn(tween(180))) togetherWith
+                    (slideOutOfContainer(slide, animationSpec = tween(180)) + fadeOut(tween(120)))
+            },
+            label = "destination",
+        ) { target ->
+            when (target) {
+                Destination.MODS -> ModsScreen(controller = mods)
+
+                Destination.MARKET -> MarketScreen(controller = market)
+
+                Destination.LOADER -> LoaderScreen(
+                    installer = installer,
+                    mods = mods,
+                    onOpenSettings = onOpenSettings,
+                    onLoaderChanged = { container.loader.invalidate() },
+                )
+
+                Destination.SETTINGS -> SettingsScreen(
+                    settings = container.settings,
+                    onChanged = {
+                        market.reloadSettings()
+                        mods.reloadWorkspace()
+                    },
+                    onReviewConsent = { market.reviewConsent() },
+                )
             }
         }
     }
