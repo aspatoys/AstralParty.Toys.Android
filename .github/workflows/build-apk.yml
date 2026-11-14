@@ -38,15 +38,15 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install SDK platform
         shell: bash
         run: |
           set -euo pipefail
+          # 运行器自带 cmdline-tools 与 ANDROID_HOME；setup-android 会去装已被移除的
+          # "tools" 包而直接失败，所以这里只用 sdkmanager 补平台与 build-tools。
           yes | sdkmanager --licenses > /dev/null || true
           sdkmanager --install "platform-tools" "platforms;android-37" "build-tools;37.0.0"
+          ls "$ANDROID_HOME/platforms"
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
