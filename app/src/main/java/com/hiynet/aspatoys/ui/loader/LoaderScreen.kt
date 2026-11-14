@@ -22,6 +22,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -245,15 +246,23 @@ private fun PrivilegeModeCard(
     ) {
         Text("提权方式", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val chipColors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                containerColor = MaterialTheme.colorScheme.surface,
+                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             FilterChip(
                 selected = !rootMode,
                 onClick = { onModeChanged(AppSettings.PrivilegeShizuku) },
                 label = { Text("Shizuku 模式") },
+                colors = chipColors,
             )
             FilterChip(
                 selected = rootMode,
                 onClick = { onModeChanged(AppSettings.PrivilegeRoot) },
                 label = { Text("Root 模式") },
+                colors = chipColors,
             )
         }
         Text(
