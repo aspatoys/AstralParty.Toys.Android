@@ -1,0 +1,11 @@
+* text=auto
+
+# 构建脚本的换行必须固定，否则在 Linux CI 上 gradlew 会因为 CRLF 直接跑不起来
+gradlew text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+
+*.jar binary
+*.png binary
+*.webp binary
+*.apk binary

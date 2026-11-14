@@ -1,0 +1,24 @@
+# Gradle / AGP
+.gradle/
+build/
+**/build/
+.kotlin/
+local.properties
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+captures/
+.cxx/
+.externalNativeBuild/
+
+# 托管产物：由构建生成（SDK、引导 DLL、发行版内置模组、注入后的游戏程序集）
+# 这些都不入库：SDK/引导来自 loader 工程，内置模组来自发行版 zip，
+# 注入后的 AstralParty.Runtime 属于游戏内容且与版本绑定。
+/app/src/main/assets/cesium/
+
+# 打包产物
+*.apk
+*.aab
+*.ap_
