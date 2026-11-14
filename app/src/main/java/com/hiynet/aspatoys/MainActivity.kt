@@ -1,6 +1,5 @@
 package com.hiynet.aspatoys
 
-import android.content.pm.ActivityInfo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -12,11 +11,7 @@ import com.hiynet.aspatoys.ui.theme.AstralPartyToysTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 平板默认横屏：管理器的列表/详情、加载器状态都更适合横向。
-        // 手机仍跟随系统旋转，不影响竖屏使用。
-        if (resources.configuration.smallestScreenWidthDp >= 600) {
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        }
+        // 平板和手机都跟随系统旋转：竖屏用底部导航，横屏自动切 NavigationRail。
         enableEdgeToEdge()
         ShizukuShell.init(applicationContext)
         setContent {
