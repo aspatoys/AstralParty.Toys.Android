@@ -77,8 +77,13 @@ jobs:
           set -euo pipefail
           tag="${{ inputs.loader_tag }}"
           if [ -z "$tag" ]; then
-            tag="$(gh api "repos/$LOADER_REPO/releases/latest" --jq .tag_name)"
+            # 取最新的非候选发行版，按版本号排序；不依赖 GitHub 的 latest 指针
+            # （早先的发布把 latest 停留在了旧版本上）。
+            tag="$(gh api "repos/$LOADER_REPO/releases?per_page=100" \
+              --jq '.[] | select(.prerelease == false) | .tag_name' \
+              | grep '^modloader-' | sed 's/^modloader-//' | sort -V | tail -n 1 | sed 's/^/modloader-/')"
           fi
+          test -n "$tag"
           version="${tag#modloader-}"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
