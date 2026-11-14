@@ -18,6 +18,10 @@ data class ModIssue(
  * 1. 新布局 `mods\{ModId}\{ModId}.dll`（DLL 与文件夹同名才算一个模组）；
  * 2. 旧布局 `mods\{ModId}.dll` 平铺，sidecar 在同级；
  * 3. `disabled_mods` 里的同名模组排在后面、强制 Enabled = false（加载器只扫 `mods`）。
+ *
+ * **启用状态只看目录**：模组在 `mods` 里就是启用，在 `disabled_mods` 里就是停用。
+ * sidecar 里的 `enabled` 是打包期的默认值，不参与运行期判断 —— 安卓引导只扫 `mods`，
+ * 若拿 sidecar 当状态，就会出现「界面显示停用、实际却在加载」这种骗人的状态。
  */
 object InstalledMods {
     /**
@@ -72,7 +76,8 @@ object InstalledMods {
             author = metadata.author,
             description = metadata.description,
             sdkVersion = metadata.sdkVersion,
-            enabled = (metadata.enabled ?: true) && !disabled,
+            // 只看目录：加载器只扫 mods，sidecar 的 enabled 不改变它会不会被加载。
+            enabled = !disabled,
             disabledFolder = disabled,
             permissions = metadata.permissions,
             dependencies = metadata.dependencies,
@@ -122,7 +127,6 @@ object InstalledMods {
             null
         }
         val metadata = sidecar ?: ModSidecar()
-        val enabled = (metadata.enabled ?: true) && !disabled
         return ModEntry(
             name = dll.nameWithoutExtension,
             fileName = dll.name,
@@ -135,7 +139,8 @@ object InstalledMods {
             author = metadata.author,
             description = metadata.description,
             sdkVersion = metadata.sdkVersion,
-            enabled = enabled,
+            // 同 scanRemote：状态只由所在目录决定。
+            enabled = !disabled,
             disabledFolder = disabled,
             permissions = metadata.permissions,
             dependencies = metadata.dependencies,
@@ -154,6 +159,13 @@ object InstalledMods {
 
         for (entry in entries) {
             val name = entry.shownName
+            if (entry.sizeBytes == 0L) {
+                issues += ModIssue(
+                    name,
+                    ModIssue.Level.ERROR,
+                    "DLL 是 0 字节：上次安装写到一半中断了。重新安装这个模组即可，加载器会一直加载失败到修好为止。",
+                )
+            }
             if (entry.sdkVersion.isNotEmpty() && SdkVersions.isIncompatible(entry.sdkVersion, installedSdkVersion)) {
                 issues += ModIssue(
                     name,

@@ -52,15 +52,20 @@ data class PackageCheckReport(
 /**
  * 市场模组包的下载与检查。
  *
- * 桌面版下载完会直接导入游戏 mods 目录；手机上还没有确定模组目录，所以这里先停在
- * 「落盘 + 预检」这一步：包留在 [downloadsDir]，报告告诉用户装进去会发生什么
- * （降级、SDK 不兼容、会保留哪个玩家配置、会清掉哪些旧文件）。
+ * 这里只负责「下载 → 校验 → 预检 → 出报告」，包留在 [downloadsDir]；真正写进加载器由
+ * `LoaderRepo.install` 完成。分开的理由：报告要把「装进去会发生什么」讲清楚
+ * （降级、SDK 不兼容、会保留哪个玩家配置、会清掉哪些旧文件），检查不过就不该动加载器目录。
  */
 class ModPackageService(
     private val client: MarketClient,
     private val inspector: ModPackageInspector,
     private val layout: ModLayout,
     private val downloadsDir: File,
+    /**
+     * 当前加载器实际使用的 SDK 版本。加载器目录在游戏私有目录里，读它得走 Shizuku，
+     * 所以由外面注入；读不到返回 null，此时跳过 SDK 门槛而不是猜一个版本。
+     */
+    private val installedSdkVersion: () -> String? = { layout.installedSdkVersion() },
 ) {
     /** 下载并检查市场里的某个版本。 */
     fun downloadAndCheck(
@@ -121,7 +126,7 @@ class ModPackageService(
             sizeBytes = result.sizeBytes,
             inspection = inspection,
             issues = issues,
-            installedSdkVersion = layout.installedSdkVersion(),
+            installedSdkVersion = installedSdkVersion(),
         )
     }
 
@@ -141,7 +146,7 @@ class ModPackageService(
             sizeBytes = file.length(),
             inspection = inspection,
             issues = issues,
-            installedSdkVersion = layout.installedSdkVersion(),
+            installedSdkVersion = installedSdkVersion(),
         )
     }
 

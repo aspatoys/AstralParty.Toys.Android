@@ -76,7 +76,10 @@ fun ToysApp() {
 
                 Destination.MARKET -> MarketScreen(controller = market)
 
-                Destination.LOADER -> LoaderScreen(installer = installer)
+                Destination.LOADER -> LoaderScreen(
+                    installer = installer,
+                    onLoaderChanged = { container.loader.invalidate() },
+                )
 
                 Destination.SETTINGS -> SettingsScreen(
                     settings = container.settings,

@@ -6,19 +6,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.hiynet.aspatoys.data.AppContainer
-import com.hiynet.aspatoys.data.loader.ModInstaller
-import java.io.File
 import com.hiynet.aspatoys.data.market.PackageCheckReport
-import com.hiynet.aspatoys.data.mods.InstalledMods
 import com.hiynet.aspatoys.data.mods.ModEntry
 import com.hiynet.aspatoys.data.mods.ModIssue
 import com.hiynet.aspatoys.data.mods.ModPackageException
 import com.hiynet.aspatoys.data.settings.StorageAccess
+import com.hiynet.aspatoys.ui.components.Toasts
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /** 下载目录里的一个模组包。 */
 data class DownloadedPackage(
@@ -29,9 +28,10 @@ data class DownloadedPackage(
 )
 
 /**
- * 模组页状态：扫工作区里的已装模组、列出下载的模组包、对单个包做检查。
+ * 模组页状态：已装模组、下载目录里的模组包、单个包的检查与安装、单个模组的启停。
  *
- * 工作区路径来自设置（[AppContainer.settings]），改完设置调用 [reloadWorkspace] 即可生效。
+ * 读写加载器全部经 [com.hiynet.aspatoys.data.loader.LoaderRepo]（设置改了就跟着变），
+ * 页面自己不再判断「走 Shizuku 还是直读」。
  */
 class ModsController(
     private val container: AppContainer,
@@ -39,6 +39,7 @@ class ModsController(
     private val context: Context,
 ) {
     private val settings = container.settings
+    private val repo = container.loader
 
     var loaderRootPath by mutableStateOf(settings.loaderRootPath)
         private set
@@ -58,6 +59,7 @@ class ModsController(
     var packages by mutableStateOf<List<DownloadedPackage>>(emptyList())
         private set
 
+    /** 正在做一次完整扫描（首屏或点「刷新」）。 */
     var scanning by mutableStateOf(false)
         private set
 
@@ -73,7 +75,7 @@ class ModsController(
     var message by mutableStateOf<String?>(null)
         private set
 
-    /** 是否已有「所有文件访问权限」——没有就读不到 `/sdcard/CesiumLoader`。 */
+    /** 是否已有「所有文件访问权限」——没有时市场下载仍可用，但读不了加载器目录。 */
     var allFilesAccess by mutableStateOf(StorageAccess.hasAllFilesAccess(context))
         private set
 
@@ -81,11 +83,7 @@ class ModsController(
     var loaderRootAccess by mutableStateOf<StorageAccess.Access?>(null)
         private set
 
-    /** 第一次进入时自动扫一次，避免用户看到空列表以为没有模组。 */
-    var initialized by mutableStateOf(false)
-        private set
-
-    /** 这次扫描用的读取方式：`Shizuku` / `直读` / `未授权`。界面上直接显示，避免靠日志猜。 */
+    /** 这次扫描用的读取方式：`Shizuku` / `直读`。界面上直接显示，避免靠日志猜。 */
     var scanMode by mutableStateOf("")
         private set
 
@@ -93,51 +91,34 @@ class ModsController(
     var scanError by mutableStateOf<String?>(null)
         private set
 
-    /** 正在进行的扫描；同一时间只允许一个，避免两次扫描的结果互相覆盖。 */
-    private var refreshJob: Job? = null
-
-    /** 正在切换启用状态的模组 Id；界面据此只锁那一行的开关。 */
+    /** 正在切换启用状态的模组名；只锁那一行的开关。 */
     var busyModId by mutableStateOf<String?>(null)
         private set
+
+    /** 刚检查过的包：报告里可以直接装进加载器。 */
+    var checkedPackage by mutableStateOf<File?>(null)
+        private set
+
+    var installing by mutableStateOf(false)
+        private set
+
+    /** 同一时间只跑一次扫描，避免两次结果互相覆盖。 */
+    private var refreshJob: Job? = null
+
+    /** 上一次扫描对应的数据版本；市场装完模组后版本会变，再进这一页需要重扫。 */
+    private var scannedVersion = -1
+
+    /** 进入页面时调用：只有数据变了或从没扫过才真的去扫。 */
+    fun onEnter() {
+        if (scannedVersion != repo.version) refresh()
+    }
 
     fun refresh() {
         if (refreshJob?.isActive == true) return
         scanning = true
         refreshJob = scope.launch {
             try {
-                allFilesAccess = StorageAccess.hasAllFilesAccess(context)
-                loaderRootAccess = withContext(Dispatchers.IO) {
-                    StorageAccess.describe(container.settings.loaderRoot)
-                }
-                val snapshot = withContext(Dispatchers.IO) {
-                    val layout = container.layout()
-
-                    // 加载器在游戏的私有目录里：即使拿到「所有文件访问权限」，
-                    // Android 11+ 也不允许列别的应用的 Android/data —— canRead() 可能是 true
-                    // 但 listFiles() 是空的，所以有 Shizuku 就一律走 Shizuku。
-                    val remote = com.hiynet.aspatoys.data.loader.ShizukuLoaderFs()
-                    val usable = remote.isAvailable() || com.hiynet.aspatoys.installer.ShizukuShell.awaitBinder()
-                    scanMode = if (usable) "Shizuku" else "直读（没拿到 Shizuku）"
-                    android.util.Log.i("CesiumMods", "scan root=${layout.loaderRoot} mode=$scanMode")
-
-                    val entries = if (usable) {
-                        InstalledMods.scanRemote(layout, remote)
-                    } else {
-                        InstalledMods.scan(layout)
-                    }
-                    android.util.Log.i("CesiumMods", "scan result=${entries.size}")
-                    scanError = if (usable) remote.lastError else null
-
-                    val sdk = layout.installedSdkVersion { path ->
-                        if (usable) remote.readText(path) else null
-                    }
-                    Triple(entries, sdk, InstalledMods.diagnose(entries, sdk))
-                }
-                installed = snapshot.first
-                installedSdkVersion = snapshot.second
-                issues = snapshot.third
-                packages = withContext(Dispatchers.IO) { listPackages() }
-                initialized = true
+                scanNow()
             } catch (failure: Exception) {
                 scanError = "读取模组目录失败：${failure.message ?: failure::class.java.simpleName}"
                 message = scanError
@@ -145,6 +126,25 @@ class ModsController(
                 scanning = false
             }
         }
+    }
+
+    /**
+     * 扫一遍并把结果写进状态。启停之后也用这个对齐（此时不显示整页「刷新中」）。
+     */
+    private suspend fun scanNow() {
+        allFilesAccess = StorageAccess.hasAllFilesAccess(context)
+        val loaderRoot = container.settings.loaderRoot
+        loaderRootAccess = withContext(Dispatchers.IO) { StorageAccess.describe(loaderRoot) }
+
+        val snapshot = withContext(Dispatchers.IO) { repo.scan() }
+        installed = snapshot.entries
+        installedSdkVersion = snapshot.sdkVersion
+        issues = snapshot.issues
+        scanMode = if (snapshot.viaShizuku) "Shizuku" else "直读（没拿到 Shizuku）"
+        scanError = snapshot.error
+        packages = withContext(Dispatchers.IO) { listPackages() }
+        // 版本在扫描途中可能又变了；以扫完那一刻为准，避免多扫一次。
+        scannedVersion = repo.version
     }
 
     /** 只重新检测存储权限与目录可读性（从系统设置授权回来后点一下）。 */
@@ -166,6 +166,7 @@ class ModsController(
     fun reloadWorkspace() {
         loaderRootPath = settings.loaderRootPath
         downloadsPath = settings.downloadsDir.path
+        repo.invalidate()
         refresh()
     }
 
@@ -178,6 +179,7 @@ class ModsController(
             try {
                 val result = withContext(Dispatchers.IO) { container.packageService().checkLocal(file) }
                 report = result
+                checkedPackage = file
             } catch (failure: Exception) {
                 message = "检查失败：${failure.message}"
             } finally {
@@ -227,13 +229,6 @@ class ModsController(
         report = null
     }
 
-    /** 刚检查过的包：报告里可以直接装进加载器。 */
-    var checkedPackage by mutableStateOf<File?>(null)
-        private set
-
-    var installing by mutableStateOf(false)
-        private set
-
     /** 把检查过的包解到加载器：`mods/<ModId>/`，并清掉上次清单里多的文件。 */
     fun installCheckedPackage() {
         val file = checkedPackage ?: run { message = "先检查一个模组包，再安装"; return }
@@ -241,40 +236,56 @@ class ModsController(
         installing = true
         scope.launch {
             try {
-                val result = withContext(Dispatchers.IO) {
-                    ModInstaller(com.hiynet.aspatoys.data.loader.ShizukuLoaderFs())
-                        .install(file, container.layout()) { }
-                }
+                val result = withContext(Dispatchers.IO) { repo.install(file) }
+                val where = if (result.disabled) "disabled_mods" else "mods"
+                Toasts.show(context, "${result.modId} 已装入 $where")
                 message = buildString {
-                    append("已安装 ${result.modId}：${result.files} 个文件")
+                    append("已安装 ${result.modId} 到 $where：${result.files} 个文件")
                     if (result.removed > 0) append("，清理 ${result.removed} 个旧文件")
                 }
                 checkedPackage = null
                 report = null
-                refresh()
+                scanNow()
             } catch (failure: Exception) {
-                message = "安装到加载器失败：${failure.message ?: failure::class.java.simpleName}"
+                val text = "安装到加载器失败：${failure.message ?: failure::class.java.simpleName}"
+                message = text
+                Toasts.show(context, text)
             } finally {
                 installing = false
             }
         }
     }
 
-    /** 启用/停用：在 `mods/` 与 `disabled_mods/` 之间搬整个模组目录。 */
+    /**
+     * 启用/停用。
+     *
+     * 先把开关就地翻过去（点一下立刻跟手），再真的搬目录，最后后台对齐一次；
+     * 失败就翻回去并提示原因，绝不让界面停在一个假的开关位置上。
+     */
     fun setEnabled(entry: ModEntry, enabled: Boolean) {
-        if (busyModId != null) return
+        if (entry.enabled == enabled) return
+        if (busyModId == entry.name) return
         busyModId = entry.name
+
+        val before = installed
+        installed = installed.map {
+            if (it.name == entry.name) it.copy(enabled = enabled, disabledFolder = !enabled) else it
+        }
+
         scope.launch {
             try {
-                withContext(Dispatchers.IO) {
-                    ModInstaller(com.hiynet.aspatoys.data.loader.ShizukuLoaderFs())
-                        .setEnabled(container.layout(), entry.name, enabled) { }
-                }
-                message = if (enabled) "${entry.shownName} 已启用" else "${entry.shownName} 已停用"
-                // 搬完再扫，避免旧扫描结果把刚切换的开关又顶回去。
-                refresh()
+                withContext(Dispatchers.IO) { repo.setEnabled(entry, enabled) }
+                Toasts.show(
+                    context,
+                    if (enabled) "${entry.shownName} 已启用" else "${entry.shownName} 已停用",
+                )
+                // 搬完再扫一次：以磁盘为准，顺便把别的模组的变化一起收进来。
+                scanNow()
             } catch (failure: Exception) {
-                message = "切换状态失败：${failure.message ?: failure::class.java.simpleName}"
+                installed = before
+                val text = failure.message ?: failure::class.java.simpleName
+                message = "切换状态失败：$text"
+                Toasts.show(context, "切换失败：$text")
             } finally {
                 busyModId = null
             }

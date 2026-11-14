@@ -110,7 +110,11 @@ fun PackageReportContent(report: PackageCheckReport, modifier: Modifier = Modifi
         if (report.inspection != null) {
             Spacer(Modifier.height(16.dp))
             Text(
-                "模组包已保存到下载目录。当前版本只做到下载与检查，安装进游戏 mods 目录的功能稍后接入。",
+                if (report.success) {
+                    "包已保存在下载目录，可以直接写进加载器；写入后模组页会显示它，并可在那里启用或停用。"
+                } else {
+                    "包已保存在下载目录，但检查没通过，不会写进加载器。"
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = scheme.onSurfaceVariant,
             )

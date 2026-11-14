@@ -38,7 +38,7 @@ import kotlinx.coroutines.withContext
  * 所有设备操作都经 Shizuku（`shell` 身份）完成，所以第一步是授权，第二步才是安装。
  */
 @Composable
-fun LoaderScreen(installer: LoaderInstaller) {
+fun LoaderScreen(installer: LoaderInstaller, onLoaderChanged: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val permissionVersion = ShizukuShell.permissionVersion
 
@@ -63,6 +63,8 @@ fun LoaderScreen(installer: LoaderInstaller) {
                 }
                 status = result
                 logs = logs + "—— $action 完成 ——"
+                // 装/还原都会改动加载器目录，模组页下次进入要重扫。
+                onLoaderChanged()
             } catch (error: Throwable) {
                 logs = logs + ("失败：" + (error.message ?: error.toString()))
             } finally {

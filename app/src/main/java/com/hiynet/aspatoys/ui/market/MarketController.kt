@@ -15,7 +15,7 @@ import com.hiynet.aspatoys.data.market.MarketModDetail
 import com.hiynet.aspatoys.data.market.MarketModSummary
 import com.hiynet.aspatoys.data.market.MarketModVersion
 import com.hiynet.aspatoys.data.market.PackageCheckReport
-import com.hiynet.aspatoys.data.mods.InstalledMods
+import com.hiynet.aspatoys.ui.components.Toasts
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -289,7 +289,13 @@ class MarketController(
                         cancellation = handle,
                     )
                 }
-                report = result
+                if (!result.success) {
+                    // 检查没过就停在这里：报告会说明是哈希、结构还是 SDK 门槛的问题。
+                    report = result
+                    message = "检查没通过，已停在报告里，没有写入加载器。"
+                    return@launch
+                }
+                installIntoLoader(result)
             } catch (cancelled: HttpCancelledException) {
                 message = "已取消下载。"
             } catch (failure: MarketException) {
@@ -300,6 +306,60 @@ class MarketController(
                 download = null
                 cancellation = null
             }
+        }
+    }
+
+    /** 下载并检查通过之后，直接写进加载器（`mods/<ModId>/` 或 `disabled_mods/`）。 */
+    private suspend fun installIntoLoader(result: PackageCheckReport) {
+        mainHandler.post { download = download?.copy(phase = DownloadState.Phase.INSTALL) }
+        try {
+            val installed = withContext(Dispatchers.IO) {
+                container.loader.install(java.io.File(result.filePath))
+            }
+            val where = if (installed.disabled) "disabled_mods" else "mods"
+            val text = "已安装 ${result.modName} v${result.registeredVersion}：${installed.files} 个文件 → $where"
+            message = if (installed.removed > 0) "$text（清理 ${installed.removed} 个旧文件）" else text
+            Toasts.show(container.context, "${result.modName} 已装入加载器")
+            report = null
+            refreshInstalledBadges()
+        } catch (failure: Exception) {
+            // 已经下好了，别让它白下：把报告留给用户，并在报告里说清为什么没装进去。
+            report = result
+            val text = "下载完成，但写入加载器失败：${failure.message ?: failure::class.java.simpleName}"
+            message = text
+            Toasts.show(container.context, text)
+        }
+    }
+
+    /** 报告里那个包已经落盘了：再试一次写进加载器（失败原因修好后不用重新下载）。 */
+    fun installReport() {
+        val target = report ?: return
+        if (download != null || !target.success) return
+        lastProgressBucket = -1
+        download = DownloadState(
+            modId = target.modId,
+            modName = target.modName,
+            version = target.registeredVersion,
+            phase = DownloadState.Phase.INSTALL,
+            received = 0,
+            total = null,
+            percent = null,
+        )
+        scope.launch {
+            try {
+                installIntoLoader(target)
+            } finally {
+                download = null
+            }
+        }
+    }
+
+    /** 装完之后重算目录里每个模组的「已装」角标。 */
+    private suspend fun refreshInstalledBadges() {
+        val installed = withContext(Dispatchers.IO) { container.loader.installedIndex() }
+        items = items.map { item ->
+            val entry = installed[item.summary.id.lowercase()]
+            item.copy(installedVersion = entry?.first ?: "", enabled = entry?.second ?: true)
         }
     }
 
@@ -396,17 +456,13 @@ class MarketController(
     // ============================== 已装状态 ==============================
 
     private fun installedIndex(): Map<String, Pair<String, Boolean>> {
-        val map = mutableMapOf<String, Pair<String, Boolean>>()
-        try {
-            for (entry in InstalledMods.scan(container.layout())) {
-                val value = entry.version to entry.enabled
-                if (entry.id.isNotEmpty()) map[entry.id.lowercase()] = value
-                map[entry.name.lowercase()] = value
-            }
+        return try {
+            // 走同一份加载器通道：市场看到的「已装」必须与模组页一致。
+            container.loader.installedIndex()
         } catch (_: Exception) {
             // 没读到时按「未安装」显示即可
+            emptyMap()
         }
-        return map
     }
 
     private fun toListItem(

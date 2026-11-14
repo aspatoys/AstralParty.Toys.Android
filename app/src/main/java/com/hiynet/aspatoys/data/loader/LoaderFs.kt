@@ -52,32 +52,20 @@ class ShizukuLoaderFs : LoaderFs {
     override fun listFiles(path: String): List<String> =
         lines("ls -p " + q(path) + " 2>/dev/null | grep -v '/$'; true")
 
+    /** 路径不存在是常态（扫 disabled_mods、找 sidecar 都会问），结尾补 `; true` 别让它变成「命令失败」。 */
     override fun exists(path: String): Boolean =
-        run("test -e " + q(path) + " && echo yes")?.trim() == "yes"
+        run("test -e " + q(path) + " && echo yes; true")?.trim() == "yes"
 
-    override fun readText(path: String): String? = run("cat " + q(path))
+    /** 读不到（不存在、无权限）就返回 null；这类失败不该污染 [lastError]。 */
+    override fun readText(path: String): String? = run("cat " + q(path) + " 2>/dev/null; true")
 
     override fun writeText(path: String, text: String) {
-        // 走一次中转文件：shell 的 heredoc 里带引号的正文不好转义，直接用本地文件更稳。
-        val local = java.io.File.createTempFile("cesium-write", ".tmp")
-        try {
-            local.writeText(text, Charsets.UTF_8)
-            ShizukuShell.exec("cat " + q(local.absolutePath) + " > " + q(path))
-        } finally {
-            local.delete()
-        }
+        // 走标准输入，不落中转文件：加载器目录在游戏私有目录里，中转文件放哪都可能读不到。
+        text.byteInputStream(Charsets.UTF_8).use { writeAtomic(path, it) }
     }
 
     override fun readBytes(path: String): ByteArray? =
-        runCatching {
-            val local = java.io.File.createTempFile("cesium-read", ".bin")
-            try {
-                ShizukuShell.exec("cat " + q(path) + " > " + q(local.absolutePath))
-                local.readBytes()
-            } finally {
-                local.delete()
-            }
-        }.getOrNull()
+        runCatching { ShizukuShell.execBytes("cat " + q(path) + " 2>/dev/null; true") }.getOrNull()
 
     override fun move(from: String, to: String) {
         ShizukuShell.exec("mv " + q(from) + " " + q(to))
@@ -91,11 +79,31 @@ class ShizukuLoaderFs : LoaderFs {
         ShizukuShell.exec("mkdir -p " + q(path))
     }
 
+    /** 文件字节数；读不到时返回 0（不猜）。 */
     override fun fileSize(path: String): Long =
-        run("stat -c %s " + q(path))?.trim()?.toLongOrNull() ?: 0L
+        run("stat -c %s " + q(path) + " 2>/dev/null; true")?.trim()?.toLongOrNull() ?: 0L
 
     override fun copyIn(localFile: java.io.File, remotePath: String) {
-        ShizukuShell.exec("cat " + q(localFile.absolutePath) + " > " + q(remotePath))
+        // 同上：字节从本进程的标准输入推过去，不依赖 shell 能不能读到本地文件。
+        localFile.inputStream().buffered().use { writeAtomic(remotePath, it) }
+    }
+
+    /**
+     * 先写 `<path>.cesium-tmp` 再 `mv` 覆盖目标。
+     *
+     * `cat > path` 会**先创建/截断目标**再开始读输入，中途失败就留下一个 0 字节的假文件 ——
+     * 模组 DLL 变成 0 字节后加载器照样会去加载它，然后每局报一次错。中转名件带 `.cesium-tmp`
+     * 后缀，不会和真实文件重名，失败时也不会污染目标。
+     */
+    private fun writeAtomic(remotePath: String, source: java.io.InputStream) {
+        val temp = "$remotePath.cesium-tmp"
+        try {
+            ShizukuShell.writeStream("cat > " + q(temp), source)
+            ShizukuShell.exec("mv -f " + q(temp) + " " + q(remotePath))
+        } catch (error: Throwable) {
+            runCatching { ShizukuShell.exec("rm -f " + q(temp)) }
+            throw error
+        }
     }
 
     override var lastError: String? = null
@@ -126,7 +134,7 @@ class ShizukuLoaderFs : LoaderFs {
 
     /**
      * 统一执行入口：失败时记下原因并写一条 logcat（`adb logcat -s CesiumLoaderFs` 就能看到，
-     * 不用靠界面提示来猜）。
+     * 不用靠界面提示来猜）。成功时把上一次的错误清掉 —— 否则一次偶发失败会让界面永远挂着红条。
      */
     private fun run(script: String): String? {
         if (!isAvailable()) {
@@ -135,7 +143,9 @@ class ShizukuLoaderFs : LoaderFs {
             return null
         }
         return try {
-            ShizukuShell.exec(script)
+            val output = ShizukuShell.exec(script)
+            lastError = null
+            output
         } catch (error: Throwable) {
             lastError = "${error.message ?: error} ← $script"
             android.util.Log.w("CesiumLoaderFs", lastError!!)

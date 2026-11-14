@@ -55,9 +55,10 @@ import com.hiynet.aspatoys.ui.components.Pill
 import com.hiynet.aspatoys.ui.format.Formats
 
 /**
- * 市场页：搜索 / 排序 / 标签筛选 → 目录 → 详情 → 下载（边下边算 SHA-256）→ 预检报告。
+ * 市场页：搜索 / 排序 / 标签筛选 → 目录 → 详情 → 下载并安装。
  *
- * 下载后不直接安装：手机上还没有确定游戏 mods 目录，先把包留在下载目录并给出检查结论。
+ * 下载边下边算 SHA-256，检查通过就直接经 Shizuku 写进加载器；检查没过则停在报告里，
+ * 把「为什么没装」说清楚（哈希不符、包结构不对、SDK 门槛、降级）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -191,7 +192,9 @@ fun MarketScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = controller::cancelDownload) { Text("取消") }
+                if (state.cancellable) {
+                    TextButton(onClick = controller::cancelDownload) { Text("取消") }
+                }
             },
         )
     }
@@ -213,8 +216,16 @@ fun MarketScreen(
                     .padding(bottom = 28.dp),
             ) {
                 PackageReportContent(report)
+                if (report.success) {
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = { controller.installReport() },
+                        enabled = controller.download == null,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("写入加载器") }
+                }
                 Spacer(Modifier.height(16.dp))
-                Button(
+                OutlinedButton(
                     onClick = {
                         showReport = false
                         controller.dismissReport()
@@ -525,7 +536,7 @@ private fun VersionRow(
             }
         }
         Spacer(Modifier.width(8.dp))
-        Button(onClick = onDownload, enabled = !downloading) { Text("下载并检查") }
+        Button(onClick = onDownload, enabled = !downloading) { Text(if (isLatest) "下载并安装" else "安装此版本") }
     }
 }
 

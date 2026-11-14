@@ -85,14 +85,29 @@ class InstalledModsTest {
     }
 
     @Test
-    fun `sidecar enabled false disables mod`() {
+    fun `sidecar enabled flag does not change the install state`() {
+        // sidecar 的 enabled 是打包期默认值；加载器只按目录决定加不加载，
+        // 所以这里在 mods/ 里的模组必须显示为启用。
         val folder = File(layout.modsRoot, "ModX").apply { mkdirs() }
         File(folder, "ModX.dll").writeBytes(byteArrayOf(1))
         File(folder, "ModX.json").writeText("""{"id":"ModX","enabled":false}""")
 
         val entry = InstalledMods.scan(layout).single()
 
+        assertTrue(entry.enabled)
+        assertFalse(entry.disabledFolder)
+    }
+
+    @Test
+    fun `mods in the disabled folder read as disabled`() {
+        val folder = File(layout.disabledModsRoot, "ModY").apply { mkdirs() }
+        File(folder, "ModY.dll").writeBytes(byteArrayOf(1))
+        File(folder, "ModY.json").writeText("""{"id":"ModY","enabled":true}""")
+
+        val entry = InstalledMods.scan(layout).single()
+
         assertFalse(entry.enabled)
+        assertTrue(entry.disabledFolder)
     }
 
     @Test

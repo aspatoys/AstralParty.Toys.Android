@@ -68,11 +68,9 @@ fun ModsScreen(
         if (uri != null) controller.checkContentUri(uri)
     }
 
-    // 首次进入扫一次；之后由「刷新」按钮和每次操作后的自动刷新负责，
-    // 避免每次切页都跑几十条 shell 命令（那就是"不跟手"的来源）。
-    LaunchedEffect(Unit) {
-        if (!controller.initialized) controller.refresh()
-    }
+    // 进页面时按需扫一次：数据没变（比如只是切了个 tab）就不重扫，
+    // 市场刚装完模组则因为数据版本变了而自动重扫。
+    LaunchedEffect(Unit) { controller.onEnter() }
 
     Column(modifier = modifier.fillMaxSize()) {
         LazyColumn(
@@ -323,8 +321,8 @@ private fun StorageAccessCard(controller: ModsController) {
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            "安卓版 CesiumLoader 的模组在 /sdcard/CesiumLoader/mods。没有这个权限时读不到已装模组，" +
-                "也无法把下载的模组写进加载器目录。",
+            "加载器目录在游戏的私有目录里，安卓只允许经 Shizuku 读写。没有这个权限时市场仍可浏览，" +
+                "但读不到已装模组、也写不进加载器目录。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onErrorContainer,
         )
