@@ -14,7 +14,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -58,6 +60,7 @@ fun ModConfigSheet(
     state: ConfigEditorState,
     onDismiss: () -> Unit,
 ) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -139,9 +142,39 @@ fun ModConfigSheet(
                     enabled = !state.saving,
                 ) { Text("重新读取") }
                 Spacer(Modifier.weight(1f))
+                TextButton(
+                    onClick = { showDeleteConfirm = true },
+                    enabled = !state.saving && controller.deletingModId == null,
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) { Text("删除模组") }
                 TextButton(onClick = onDismiss) { Text("关闭") }
             }
         }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("删除模组？") },
+            text = {
+                Text(
+                    "将删除「${state.title}」的模组文件，但保留 configs/${state.modId}.json。\n" +
+                        "这个操作不能撤销。",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        controller.deleteMod(state.entry)
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) { Text("删除") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") }
+            },
+        )
     }
 }
 

@@ -32,6 +32,7 @@ data class DownloadedPackage(
 
 /** 模组配置编辑器的状态。 */
 data class ConfigEditorState(
+    val entry: ModEntry,
     val modId: String,
     val title: String,
     val path: String,
@@ -335,10 +336,15 @@ class ModsController(
     var configEditor by mutableStateOf<ConfigEditorState?>(null)
         private set
 
+    /** 正在删除的模组；非 null 时界面禁用删除按钮。 */
+    var deletingModId by mutableStateOf<String?>(null)
+        private set
+
     /** 打开某个模组的配置面板。 */
     fun openConfig(entry: ModEntry) {
         val path = repo.configPath(entry.name)
         configEditor = ConfigEditorState(
+            entry = entry,
             modId = entry.name,
             title = entry.shownName,
             path = path,
@@ -372,6 +378,27 @@ class ModsController(
 
     fun closeConfig() {
         configEditor = null
+    }
+
+    /** 删除当前配置面板对应的模组；成功后关闭面板并重扫。 */
+    fun deleteMod(entry: ModEntry) {
+        if (deletingModId != null) return
+        deletingModId = entry.name
+        scope.launch {
+            try {
+                val logs = mutableListOf<String>()
+                withContext(Dispatchers.IO) {
+                    repo.deleteMod(entry) { line -> logs += line }
+                }
+                configEditor = null
+                scanNow()
+                message = "已删除 ${entry.shownName}"
+            } catch (failure: Throwable) {
+                message = "删除失败：" + (failure.message ?: failure.toString())
+            } finally {
+                deletingModId = null
+            }
+        }
     }
 
     /** 文本编辑模式下的整段文本改动。 */

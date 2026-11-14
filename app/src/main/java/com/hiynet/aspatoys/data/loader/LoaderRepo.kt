@@ -113,6 +113,20 @@ class LoaderRepo(
         return result
     }
 
+    /** 删除已安装模组；只删本体，配置保留。 */
+    fun deleteMod(entry: ModEntry, log: (String) -> Unit = {}): Boolean {
+        requireReady()
+        val deleted = installer.delete(
+            layout = layout(),
+            modId = entry.name,
+            folderName = entry.directoryName,
+            disabled = entry.disabledFolder,
+            log = log,
+        )
+        if (deleted) invalidate()
+        return deleted
+    }
+
     /** 把本地 ZIP 装进加载器；成功后 [version] 自增。 */
     fun install(zip: File, log: (String) -> Unit = {}): ModInstaller.Result {
         requireReady()

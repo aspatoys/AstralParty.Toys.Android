@@ -179,6 +179,46 @@ class ModInstaller(
         return ToggleResult(modId, enabled, changed = true)
     }
 
+    /**
+     * 删除一个已安装模组：目录布局删整个 `mods|disabled_mods/<folder>/`，
+     * 平铺旧布局删 `<modId>.dll` 和同名 sidecar。
+     *
+     * 只删模组本体，不动 `configs/<ModId>.json`（配置留着，重装后还能用）。
+     */
+    fun delete(layout: ModLayout, modId: String, folderName: String?, disabled: Boolean, log: (String) -> Unit): Boolean {
+        val root = if (disabled) layout.disabledModsRoot.absolutePath else layout.modsRoot.absolutePath
+        val folder = folderName ?: modId
+        val nested = "$root/$folder"
+        val flatDll = "$root/$modId.dll"
+        val flatJson = "$root/$modId.json"
+
+        val hasNested = fs.exists(nested)
+        val hasFlat = fs.exists(flatDll)
+        if (!hasNested && !hasFlat) {
+            throw ModPackageException("找不到 $modId：${if (disabled) "disabled_mods" else "mods"}/ 里没有它。")
+        }
+
+        if (hasNested) {
+            fs.delete(nested)
+            if (fs.exists(nested)) {
+                throw ModPackageException("删除失败：$nested 仍然存在（加载器目录可能被占用或不可写）。")
+            }
+            log("已删除目录 $nested")
+        }
+        if (hasFlat) {
+            fs.delete(flatDll)
+            if (fs.exists(flatJson)) fs.delete(flatJson)
+            if (fs.exists(flatDll)) {
+                throw ModPackageException("删除失败：$flatDll 仍然存在。")
+            }
+            log("已删除文件 $flatDll")
+        }
+
+        val manifest = "${layout.manifestRoot.absolutePath}/packages/$modId.json"
+        runCatching { if (fs.exists(manifest)) fs.delete(manifest) }
+        return true
+    }
+
     /** 读/写玩家配置：`configs/<ModId>.json`。 */
     fun readConfig(layout: ModLayout, modId: String): String? =
         fs.readText("${layout.configsRoot.absolutePath}/$modId.json")
