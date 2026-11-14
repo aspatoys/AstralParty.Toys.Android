@@ -138,7 +138,7 @@ class ShizukuLoaderFs : LoaderFs {
      */
     private fun run(script: String): String? {
         if (!isAvailable()) {
-            lastError = "Shizuku 不可用（服务 ${ShizukuShell.isServiceAlive()}，授权 ${ShizukuShell.hasPermission()}）"
+            lastError = "提权不可用（${ShizukuShell.modeName()}：服务 ${ShizukuShell.isServiceAlive()}，权限 ${ShizukuShell.hasPermission()}）"
             android.util.Log.w("CesiumLoaderFs", lastError!!)
             return null
         }

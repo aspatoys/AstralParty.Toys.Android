@@ -28,22 +28,38 @@ object ShizukuShell {
 
     private var initialized = false
 
-    /** 启动时调用一次：注册授权结果回调。 */
+    /** 启动时调用一次：注册授权结果回调，并在后台探测 root。 */
     fun init(@Suppress("UNUSED_PARAMETER") context: Context) {
         if (initialized) return
         initialized = true
         runCatching {
             Shizuku.addRequestPermissionResultListener { _, _ -> onPermissionResult() }
         }
+        Thread {
+            RootShell.isAvailable()
+        }.apply { isDaemon = true }.start()
     }
 
-    fun isServiceAlive(): Boolean = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
+    /** 当前实际使用的提权方式：有 root 用 Root，否则 Shizuku。 */
+    fun modeName(): String = if (RootShell.isAvailable()) "Root" else "Shizuku"
+
+    fun isRootMode(): Boolean = RootShell.isAvailable()
 
     /**
-     * 等 binder 就绪。
+     * 是否已有可用的提权通道。
      *
-     * Shizuku 的 binder 由 `ShizukuProvider` 在进程启动时异步接上，界面第一次组合时
-     * `pingBinder()` 可能还是 false；这里轮询一小会儿，避免把「还没连上」当成「没有 Shizuku」。
+     * 名字保留 `isServiceAlive` 是为了不动调用方；有 root 时直接返回 true，
+     * 不再要求 Shizuku 服务在运行。
+     */
+    fun isServiceAlive(): Boolean {
+        if (RootShell.isAvailable()) return true
+        return runCatching { Shizuku.pingBinder() }.getOrDefault(false)
+    }
+
+    /**
+     * 等提权通道就绪。
+     *
+     * Root 直接可用；否则等 Shizuku 的 binder（它由 `ShizukuProvider` 异步接上）。
      */
     fun awaitBinder(timeoutMs: Long = 3000): Boolean {
         if (isServiceAlive()) return true
@@ -56,6 +72,7 @@ object ShizukuShell {
     }
 
     fun hasPermission(): Boolean {
+        if (RootShell.isAvailable()) return true
         if (!isServiceAlive()) return false
         return runCatching {
             Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
@@ -63,6 +80,7 @@ object ShizukuShell {
     }
 
     fun requestPermission() {
+        if (RootShell.isAvailable()) return
         if (!isServiceAlive()) return
         runCatching { Shizuku.requestPermission(PERMISSION_REQUEST_CODE) }
     }
@@ -131,6 +149,9 @@ object ShizukuShell {
     }
 
     private fun start(script: String): Process {
+        if (RootShell.isAvailable()) {
+            return RootShell.start(script)
+        }
         check(isServiceAlive()) { "Shizuku 没有运行" }
         check(hasPermission()) { "还没拿到 Shizuku 权限" }
 

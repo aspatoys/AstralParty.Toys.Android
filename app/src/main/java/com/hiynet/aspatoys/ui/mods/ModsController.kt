@@ -13,6 +13,7 @@ import com.hiynet.aspatoys.data.mods.ModEntry
 import com.hiynet.aspatoys.data.mods.ModIssue
 import com.hiynet.aspatoys.data.mods.ModPackageException
 import com.hiynet.aspatoys.data.settings.StorageAccess
+import com.hiynet.aspatoys.installer.ShizukuShell
 import com.hiynet.aspatoys.ui.components.Toasts
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -172,7 +173,7 @@ class ModsController(
         installed = snapshot.entries
         installedSdkVersion = snapshot.sdkVersion
         issues = snapshot.issues
-        scanMode = if (snapshot.viaShizuku) "Shizuku" else "直读（没拿到 Shizuku）"
+        scanMode = if (snapshot.viaShizuku) ShizukuShell.modeName() else "直读（无提权）"
         scanError = snapshot.error
         packages = withContext(Dispatchers.IO) { listPackages() }
         // 版本在扫描途中可能又变了；以扫完那一刻为准，避免多扫一次。

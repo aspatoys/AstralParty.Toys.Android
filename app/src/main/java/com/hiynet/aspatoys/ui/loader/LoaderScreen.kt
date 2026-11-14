@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hiynet.aspatoys.installer.LoaderInstaller
+import com.hiynet.aspatoys.installer.RootShell
 import com.hiynet.aspatoys.installer.ShizukuShell
 import com.hiynet.aspatoys.ui.components.SkeletonLine
 import com.hiynet.aspatoys.ui.mods.ModsController
@@ -121,8 +122,9 @@ fun LoaderScreen(
                     // 第一次读状态要跑几条 shell 命令，先铺骨架，别让这一块空着。
                     repeat(4) { SkeletonLine(widthFraction = if (it % 2 == 0) 0.85f else 0.6f, height = 11.dp) }
                 } else {
-                    StatusLine("Shizuku 服务", if (current.shizukuAlive) "运行中" else "未运行")
-                    StatusLine("Shizuku 授权", if (current.shizukuGranted) "已授权" else "未授权")
+                    val rootMode = ShizukuShell.isRootMode()
+                    StatusLine("提权方式", if (rootMode) "Root" else "Shizuku")
+                    StatusLine("提权状态", if (current.shizukuGranted) "已就绪" else "未授权")
                     StatusLine("缓存包", current.bundlePath ?: "未找到")
                     StatusLine("缓存包指纹", current.bundleSha256?.take(16) ?: "—")
                     StatusLine("加载器", if (current.injected) "已注入" else "原版")
@@ -141,7 +143,19 @@ fun LoaderScreen(
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(onClick = { ShizukuShell.requestPermission() }, enabled = !busy) { Text("授权 Shizuku") }
+            if (ShizukuShell.isRootMode()) {
+                OutlinedButton(
+                    onClick = {
+                        RootShell.reset()
+                        refresh()
+                    },
+                    enabled = !busy,
+                ) { Text("重新检测 Root") }
+            } else {
+                OutlinedButton(onClick = { ShizukuShell.requestPermission() }, enabled = !busy) {
+                    Text("授权 Shizuku")
+                }
+            }
             OutlinedButton(onClick = { refresh() }, enabled = !busy) { Text("刷新") }
         }
 
@@ -217,7 +231,9 @@ private fun WorkspaceCard(mods: ModsController, onOpenSettings: () -> Unit) {
             buildString {
                 append("已装 ${mods.installed.size} 个模组 · SDK ")
                 append(mods.installedSdkVersion ?: "未知")
-                if (mods.scanMode.startsWith("Shizuku")) append(" · 经 Shizuku 读取")
+                if (mods.scanMode.isNotBlank() && !mods.scanMode.startsWith("直读")) {
+                    append(" · 经 ").append(mods.scanMode).append(" 读取")
+                }
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
