@@ -66,11 +66,21 @@ class LoaderInstaller(private val context: Context) {
     // ---------------------------------------------------------------- 状态
 
     fun status(): Status {
+        val rootSelected = ShizukuShell.selectedMode() == com.hiynet.aspatoys.data.settings.AppSettings.PrivilegeRoot
         if (!ShizukuShell.isServiceAlive()) {
-            return Status(note = "Shizuku 没有运行：先启动 Shizuku 服务")
+            return Status(
+                note = if (rootSelected) {
+                    "Root 不可用：${RootShell.lastError ?: "没有找到 su"}"
+                } else {
+                    "Shizuku 没有运行：先启动 Shizuku 服务"
+                },
+            )
         }
         if (!ShizukuShell.hasPermission()) {
-            return Status(shizukuAlive = true, note = "还没授权 Shizuku")
+            return Status(
+                shizukuAlive = true,
+                note = if (rootSelected) "Root 不可用：${RootShell.lastError ?: "没有拿到 su 权限"}" else "还没授权 Shizuku",
+            )
         }
 
         val path = runCatching { resolveBundle() }.getOrNull()

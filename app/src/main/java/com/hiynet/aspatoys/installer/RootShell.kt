@@ -8,7 +8,7 @@ import java.util.concurrent.TimeUnit
  * 有 root 时不需要 Shizuku：目标仍然是游戏私有目录，但 `su` 直接给 uid 0，
  * 权限比 Shizuku 的 shell(uid 2000) 更高，读写、改包都不受限制。
  *
- * 探测只做一次并缓存，避免每次刷新都弹 root 授权框。
+ * 探测只做一次并缓存；探测失败也会记录原因，界面可点「重新检测提权」重试。
  */
 object RootShell {
 
@@ -18,10 +18,21 @@ object RootShell {
     @Volatile
     private var available = false
 
+    @Volatile
+    private var suPath: String? = null
+
     /** 最近一次探测失败原因，给界面/日志用。 */
     @Volatile
     var lastError: String? = null
         private set
+
+    private val candidates = listOf(
+        "/system/bin/su",
+        "/system/xbin/su",
+        "/debug_ramdisk/su",
+        "/sbin/su",
+        "su",
+    )
 
     fun isAvailable(): Boolean {
         if (!resolved) {
@@ -39,39 +50,66 @@ object RootShell {
         synchronized(this) {
             resolved = false
             available = false
+            suPath = null
             lastError = null
         }
     }
 
     private fun detect() {
         resolved = true
-        available = try {
-            val process = ProcessBuilder("su", "-c", "id").start()
-            val out = process.inputStream.bufferedReader().use { it.readText() }
-            val err = process.errorStream.bufferedReader().use { it.readText() }
-            val finished = process.waitFor(5, TimeUnit.SECONDS)
-            if (!finished) {
-                process.destroy()
-                lastError = "su 探测超时"
-                false
-            } else {
-                val text = (out + "\n" + err).trim()
-                if (process.exitValue() == 0 && text.contains("uid=0")) {
-                    true
-                } else {
-                    lastError = "su 返回非 root：${text.take(200)}"
-                    false
+        lastError = null
+        for (candidate in candidates) {
+            val result = runCatching { probe(candidate) }.getOrElse { error ->
+                lastError = "${candidate} 启动失败：${error.message ?: error}"
+                null
+            }
+            if (result == true) {
+                suPath = candidate
+                available = true
+                return
+            }
+        }
+        available = false
+        if (lastError == null) lastError = "没有找到可用的 su"
+    }
+
+    private fun probe(path: String): Boolean {
+        val process = ProcessBuilder(path, "-c", "id").start()
+        val out = StringBuilder()
+        val err = StringBuilder()
+        val outThread = Thread {
+            runCatching {
+                process.inputStream.bufferedReader().use { reader ->
+                    reader.forEachLine { out.append(it).append('\n') }
                 }
             }
-        } catch (error: Throwable) {
-            lastError = "没有可用的 su：${error.message ?: error}"
-            false
+        }.apply { isDaemon = true; start() }
+        val errThread = Thread {
+            runCatching {
+                process.errorStream.bufferedReader().use { reader ->
+                    reader.forEachLine { err.append(it).append('\n') }
+                }
+            }
+        }.apply { isDaemon = true; start() }
+
+        val finished = process.waitFor(15, TimeUnit.SECONDS)
+        if (!finished) {
+            runCatching { process.destroy() }
+            lastError = "$path 探测超时（可能等待 root 授权）"
+            return false
         }
+        outThread.join(1000)
+        errThread.join(1000)
+        val text = (out.toString() + "\n" + err.toString()).trim()
+        if (process.exitValue() == 0 && text.contains("uid=0")) return true
+        lastError = "$path 返回非 root：${text.take(200)}"
+        return false
     }
 
     fun start(script: String): Process {
         check(isAvailable()) { "Root 不可用：${lastError ?: "su 不存在"}" }
-        return ProcessBuilder("su", "-c", script).start()
+        val path = suPath ?: "su"
+        return ProcessBuilder(path, "-c", script).start()
     }
 
     /** 转义成单引号包裹的 shell 字面量。 */

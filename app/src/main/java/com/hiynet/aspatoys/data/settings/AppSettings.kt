@@ -49,6 +49,18 @@ class AppSettings(context: Context) {
         }
 
     /**
+     * 提权方式：`shizuku`（默认，兼容旧行为）或 `root`。
+     *
+     * 有 Root 的用户在加载器页切到 Root 模式后，所有设备操作直接走 `su`，
+     * 不再要求 Shizuku 服务/授权。
+     */
+    var privilegeMode: String
+        get() = prefs.getString(KeyPrivilegeMode, PrivilegeShizuku) ?: PrivilegeShizuku
+        set(value) {
+            prefs.edit().putString(KeyPrivilegeMode, if (value == PrivilegeRoot) PrivilegeRoot else PrivilegeShizuku).apply()
+        }
+
+    /**
      * 加载器根目录。
      *
      * 旧版本把这里默认成 `/sdcard/CesiumLoader`（桌面时代的布局）；现在的加载器装在游戏私有目录，
@@ -114,9 +126,13 @@ class AppSettings(context: Context) {
         /** 旧版本用的根目录名，只用于识别并迁移旧设置。 */
         const val LegacyLoaderFolderName = "CesiumLoader"
 
+        const val PrivilegeShizuku = "shizuku"
+        const val PrivilegeRoot = "root"
+
         private const val KeyMarketBaseUrl = "market.baseUrl"
         private const val KeyConsentVersion = "market.consentVersion"
         private const val KeyLanguage = "ui.language"
+        private const val KeyPrivilegeMode = "privilege.mode"
         private const val KeyLoaderRoot = "paths.loaderRoot"
         private const val KeyDownloads = "paths.downloads"
 

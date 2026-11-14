@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.hiynet.aspatoys.R
 import com.hiynet.aspatoys.data.AppContainer
 import com.hiynet.aspatoys.installer.LoaderInstaller
+import com.hiynet.aspatoys.installer.ShizukuShell
 import com.hiynet.aspatoys.ui.loader.LoaderScreen
 import com.hiynet.aspatoys.ui.market.MarketController
 import com.hiynet.aspatoys.ui.market.MarketScreen
@@ -186,6 +187,11 @@ private fun DestinationContent(
                 Destination.LOADER -> LoaderScreen(
                     installer = installer,
                     mods = mods,
+                    settings = container.settings,
+                    onModeChanged = { mode ->
+                        container.settings.privilegeMode = mode
+                        ShizukuShell.setMode(mode)
+                    },
                     onOpenSettings = onOpenSettings,
                     onLoaderChanged = { container.loader.invalidate() },
                 )

@@ -28,6 +28,10 @@ object ShizukuShell {
 
     private var initialized = false
 
+    /** 用户在加载器页选的模式：`shizuku` 或 `root`。 */
+    @Volatile
+    private var privilegeMode = "shizuku"
+
     /** 启动时调用一次：注册授权结果回调，并在后台探测 root。 */
     fun init(@Suppress("UNUSED_PARAMETER") context: Context) {
         if (initialized) return
@@ -35,25 +39,42 @@ object ShizukuShell {
         runCatching {
             Shizuku.addRequestPermissionResultListener { _, _ -> onPermissionResult() }
         }
-        Thread {
-            RootShell.isAvailable()
-        }.apply { isDaemon = true }.start()
+        if (privilegeMode != "shizuku") {
+            Thread {
+                RootShell.isAvailable()
+            }.apply { isDaemon = true }.start()
+        }
     }
 
-    /** 当前实际使用的提权方式：有 root 用 Root，否则 Shizuku。 */
-    fun modeName(): String = if (RootShell.isAvailable()) "Root" else "Shizuku"
+    /** 由 MainActivity 在启动时把持久化的选择灌进来。 */
+    fun setMode(mode: String) {
+        privilegeMode = if (mode == "root") "root" else "shizuku"
+        if (privilegeMode == "root") {
+            RootShell.reset()
+            Thread { RootShell.isAvailable() }.apply { isDaemon = true }.start()
+        }
+        permissionVersion++
+    }
 
-    fun isRootMode(): Boolean = RootShell.isAvailable()
+    fun selectedMode(): String = privilegeMode
+
+    /** 当前实际使用的提权方式：Root 模式下有 su 才是 Root。 */
+    fun modeName(): String = if (isRootMode()) "Root" else "Shizuku"
+
+    fun isRootMode(): Boolean = privilegeMode == "root" && RootShell.isAvailable()
 
     /**
      * 是否已有可用的提权通道。
      *
-     * 名字保留 `isServiceAlive` 是为了不动调用方；有 root 时直接返回 true，
-     * 不再要求 Shizuku 服务在运行。
+     * 名字保留 `isServiceAlive` 是为了不动调用方；
+     * Root 模式只认 root，Shizuku 模式只认 Shizuku。
      */
     fun isServiceAlive(): Boolean {
-        if (RootShell.isAvailable()) return true
-        return runCatching { Shizuku.pingBinder() }.getOrDefault(false)
+        return when (privilegeMode) {
+            "root" -> RootShell.isAvailable()
+            "shizuku" -> runCatching { Shizuku.pingBinder() }.getOrDefault(false)
+            else -> RootShell.isAvailable() || runCatching { Shizuku.pingBinder() }.getOrDefault(false)
+        }
     }
 
     /**
@@ -72,7 +93,7 @@ object ShizukuShell {
     }
 
     fun hasPermission(): Boolean {
-        if (RootShell.isAvailable()) return true
+        if (privilegeMode == "root") return RootShell.isAvailable()
         if (!isServiceAlive()) return false
         return runCatching {
             Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
@@ -80,7 +101,7 @@ object ShizukuShell {
     }
 
     fun requestPermission() {
-        if (RootShell.isAvailable()) return
+        if (privilegeMode == "root") return
         if (!isServiceAlive()) return
         runCatching { Shizuku.requestPermission(PERMISSION_REQUEST_CODE) }
     }
@@ -149,11 +170,11 @@ object ShizukuShell {
     }
 
     private fun start(script: String): Process {
-        if (RootShell.isAvailable()) {
+        if (privilegeMode == "root" && RootShell.isAvailable()) {
             return RootShell.start(script)
         }
-        check(isServiceAlive()) { "Shizuku 没有运行" }
-        check(hasPermission()) { "还没拿到 Shizuku 权限" }
+        check(isServiceAlive()) { if (privilegeMode == "root") "Root 不可用：${RootShell.lastError}" else "Shizuku 没有运行" }
+        check(hasPermission()) { if (privilegeMode == "root") "Root 不可用：${RootShell.lastError}" else "还没拿到 Shizuku 权限" }
 
         val method = newProcessMethod ?: throw IllegalStateException("这个 Shizuku 版本没有 newProcess，无法执行命令")
         return method.invoke(null, arrayOf("sh", "-c", script), null, null) as? Process

@@ -21,6 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -37,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.hiynet.aspatoys.data.settings.AppSettings
 import com.hiynet.aspatoys.installer.LoaderInstaller
 import com.hiynet.aspatoys.installer.RootShell
 import com.hiynet.aspatoys.installer.ShizukuShell
@@ -55,6 +57,8 @@ import kotlinx.coroutines.withContext
 fun LoaderScreen(
     installer: LoaderInstaller,
     mods: ModsController,
+    settings: AppSettings,
+    onModeChanged: (String) -> Unit,
     onOpenSettings: () -> Unit,
     onLoaderChanged: () -> Unit = {},
 ) {
@@ -107,6 +111,11 @@ fun LoaderScreen(
     ) {
         Text("加载器", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
 
+        PrivilegeModeCard(
+            settings = settings,
+            onModeChanged = onModeChanged,
+        )
+
         WorkspaceCard(mods = mods, onOpenSettings = onOpenSettings)
 
         Card {
@@ -123,8 +132,16 @@ fun LoaderScreen(
                     repeat(4) { SkeletonLine(widthFraction = if (it % 2 == 0) 0.85f else 0.6f, height = 11.dp) }
                 } else {
                     val rootMode = ShizukuShell.isRootMode()
-                    StatusLine("提权方式", if (rootMode) "Root" else "Shizuku")
-                    StatusLine("提权状态", if (current.shizukuGranted) "已就绪" else "未授权")
+                    val rootSelected = ShizukuShell.selectedMode() == AppSettings.PrivilegeRoot
+                    StatusLine("提权方式", if (rootSelected) "Root" else "Shizuku")
+                    StatusLine(
+                        "提权状态",
+                        when {
+                            current.shizukuGranted -> "已就绪"
+                            rootSelected -> "Root 不可用"
+                            else -> "未授权"
+                        },
+                    )
                     StatusLine("缓存包", current.bundlePath ?: "未找到")
                     StatusLine("缓存包指纹", current.bundleSha256?.take(16) ?: "—")
                     StatusLine("加载器", if (current.injected) "已注入" else "原版")
@@ -138,12 +155,22 @@ fun LoaderScreen(
                             color = MaterialTheme.colorScheme.primary,
                         )
                     }
+                    if (!rootMode) {
+                        RootShell.lastError?.let { reason ->
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                "Root 检测：$reason",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
             }
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            if (ShizukuShell.isRootMode()) {
+            if (ShizukuShell.selectedMode() == AppSettings.PrivilegeRoot) {
                 OutlinedButton(
                     onClick = {
                         RootShell.reset()
@@ -194,6 +221,50 @@ fun LoaderScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * 提权方式选择：Shizuku 模式 / Root 模式。
+ *
+ * 有 Root 的设备切到 Root 模式后，安装与读写不再依赖 Shizuku 服务。
+ */
+@Composable
+private fun PrivilegeModeCard(
+    settings: AppSettings,
+    onModeChanged: (String) -> Unit,
+) {
+    val rootMode = settings.privilegeMode == AppSettings.PrivilegeRoot
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("提权方式", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = !rootMode,
+                onClick = { onModeChanged(AppSettings.PrivilegeShizuku) },
+                label = { Text("Shizuku 模式") },
+            )
+            FilterChip(
+                selected = rootMode,
+                onClick = { onModeChanged(AppSettings.PrivilegeRoot) },
+                label = { Text("Root 模式") },
+            )
+        }
+        Text(
+            if (rootMode) {
+                "通过 su 直接读写游戏私有目录，不需要 Shizuku 服务和授权。"
+            } else {
+                "通过 Shizuku 的 shell 身份读写，需要 Shizuku 服务运行并授权。"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
