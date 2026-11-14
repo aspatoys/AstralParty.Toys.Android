@@ -280,8 +280,10 @@ namespace CesiumLoader.Android.Bootstrap
 
         private static readonly string[] RootCandidates =
         {
-            "/sdcard/CesiumLoader",
+            // 新版加载器（Toys.Android）装在游戏私有目录，优先读这里；
+            // /sdcard/CesiumLoader 只作为旧版/重打包版的兼容回退。
             "/sdcard/Android/data/com.feimo.astralparty/files/CesiumLoader",
+            "/sdcard/CesiumLoader",
             "/sdcard/Android/data/com.feimo.astralparty.cesium/files/CesiumLoader",
         };
 
