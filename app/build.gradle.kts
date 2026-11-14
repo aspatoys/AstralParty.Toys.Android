@@ -115,6 +115,25 @@ val syncLoaderAssets = tasks.register("syncLoaderAssets") {
                 }
                 val mods = modsDir.listFiles()?.count { it.isDirectory } ?: 0
                 logger.lifecycle("内置模组 -> assets/cesium/mods  $mods 个模组 / $files 个文件")
+
+                // 发行版清单里的版本号：App 写 installed.json 时用它，避免为了一个版本号再手改代码。
+                val manifestEntry = zip.getEntry("cesium-loader.json")
+                if (manifestEntry != null) {
+                    val text = zip.getInputStream(manifestEntry).use { it.readBytes().toString(Charsets.UTF_8) }
+                    val version = Regex("\"version\"\\s*:\\s*\"([^\"]+)\"")
+                        .find(text)?.groupValues?.get(1)
+                    if (!version.isNullOrBlank()) {
+                        File(assetsCesium, "loader.json").writeText(
+                            "{\"version\":\"$version\",\"source\":\"${cesiumReleaseZip.name}\"}\n",
+                            Charsets.UTF_8,
+                        )
+                        logger.lifecycle("加载器版本 -> assets/cesium/loader.json  $version")
+                    } else {
+                        logger.warn("发行版清单里没有 version 字段，沿用 assets 里已有的 loader.json")
+                    }
+                } else {
+                    logger.warn("发行版 zip 里没有 cesium-loader.json，沿用 assets 里已有的 loader.json")
+                }
             }
         } else {
             logger.warn("没有指定发行版 zip（-PcesiumReleaseZip），跳过内置模组同步")

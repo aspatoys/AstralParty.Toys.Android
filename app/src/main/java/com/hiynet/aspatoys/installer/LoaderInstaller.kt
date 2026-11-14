@@ -34,6 +34,12 @@ class LoaderInstaller(private val context: Context) {
         const val MODS_ASSET_DIR = "cesium/mods"
         const val INJECTED_ASSET = "cesium/AstralParty.Runtime.injected.dll"
 
+        /** `syncLoaderAssets` 从发行版 zip 写出来的加载器版本。 */
+        const val LOADER_VERSION_ASSET = "cesium/loader.json"
+
+        /** 读不到 loader.json 时用的基线版本。 */
+        const val FALLBACK_LOADER_VERSION = "3.8.0"
+
         val LOADER_ROOT = "/sdcard/Android/data/$GAME_PACKAGE/files/CesiumLoader"
 
         /** 与 [com.hiynet.cesiumloader.core.CesiumLayout] 保持一致：SDK 在 sdk/，引导在 bootstrap/。 */
@@ -193,14 +199,33 @@ class LoaderInstaller(private val context: Context) {
         writeInstalledIndex(log)
     }
 
+    /**
+     * 随包加载器的版本号。
+     *
+     * 由 `syncLoaderAssets` 从发行版 zip 的清单里取出来写到 `assets/cesium/loader.json`，
+     * 所以换加载器版本只需要换 zip，不必改这里。读不到就退回当前基线版本。
+     */
+    private fun loaderVersion(): String {
+        return try {
+            val text = context.assets.open(LOADER_VERSION_ASSET).use {
+                it.readBytes().toString(Charsets.UTF_8)
+            }
+            Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(text)?.groupValues?.get(1)
+                ?.takeIf { it.isNotBlank() } ?: FALLBACK_LOADER_VERSION
+        } catch (_: Exception) {
+            FALLBACK_LOADER_VERSION
+        }
+    }
+
     /** 记下这次的装载状态：加载器版本、SDK 版本、内置模组清单，供模组页与 SDK 门槛检查读取。 */
     private fun writeInstalledIndex(log: (String) -> Unit) {
         val modIds = context.assets.list(MODS_ASSET_DIR).orEmpty().sorted()
+        val version = loaderVersion()
         val payload = buildString {
             appendLine("{")
             appendLine("  \"layout\": 2,")
             appendLine("  \"loaderPackage\": \"com.hiynet.cesiumloader.core\",")
-            appendLine("  \"sdkVersion\": \"3.7.6\",")
+            appendLine("  \"sdkVersion\": \"$version\",")
             appendLine("  \"bootstrap\": \"bootstrap/CesiumLoader.Android.Bootstrap.dll\",")
             appendLine("  \"sdk\": \"sdk/CesiumLoader.SDK.dll\",")
             appendLine("  \"installedAt\": \"${java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", java.util.Locale.US).format(java.util.Date())}\",")
