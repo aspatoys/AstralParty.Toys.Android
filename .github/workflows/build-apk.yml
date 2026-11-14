@@ -47,14 +47,18 @@ jobs:
       - name: Install SDK platform
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           # 运行器自带 Android SDK 与 cmdline-tools，只是 sdkmanager 不在 PATH 上，
           # 而且 setup-android 会去装已被移除的 "tools" 包，所以这里直接找 sdkmanager。
-          sdkmanager="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}" -name sdkmanager -type f | head -n 1)"
+          sdk="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          sdkmanager="$(find "$sdk" -name sdkmanager -type f | head -n 1)"
           test -n "$sdkmanager"
           yes | "$sdkmanager" --licenses > /dev/null || true
-          "$sdkmanager" --install "platform-tools" "platforms;android-37" "build-tools;37.0.0"
-          ls "${ANDROID_HOME:-/usr/local/lib/android/sdk}/platforms"
+          # 平台包名带小版本号：API 37 的包是 platforms;android-37.0
+          "$sdkmanager" --install "platform-tools" "platforms;android-37.0"
+          "$sdkmanager" --install "build-tools;37.0.0" || "$sdkmanager" --install "build-tools;36.0.0"
+          ls "$sdk/platforms"
+          ls "$sdk/build-tools"
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
