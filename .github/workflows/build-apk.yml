@@ -7,6 +7,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Optional existing release tag version, without v (for example 1.1.2)"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -28,14 +33,19 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_version && format('v{0}', inputs.release_version) || github.ref }}
 
       - name: Resolve version
         id: version
         shell: bash
         run: |
           set -euo pipefail
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            name="${GITHUB_REF_NAME#v}"
+          requested="${{ inputs.release_version }}"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] || [ -n "$requested" ]; then
+            name="${requested:-${GITHUB_REF_NAME#v}}"
+            [[ "$name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Invalid release version"; exit 1; }
+            echo "tag=v$name" >> "$GITHUB_OUTPUT"
             # 版本号直接决定版本码，不再混入 run_number：
             # major.minor.patch 各段按两位拼接（1.1.2 -> 10102），保证单调递增且可复现。
             IFS='.' read -r major minor patch <<< "$name"
@@ -151,7 +161,7 @@ jobs:
             echo "使用仓库配置的发行密钥库"
           else
             echo "signed=false" >> "$GITHUB_OUTPUT"
-            if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            if [ "${GITHUB_REF_TYPE}" = "tag" ] || [ -n "${{ inputs.release_version }}" ]; then
               echo "::error::缺少发行签名：仓库未配置 ASPATOYS_KEYSTORE_BASE64 等 secrets，tag 发行必须使用正式密钥签名，拒绝用调试密钥发布。"
               exit 1
             fi
@@ -207,7 +217,7 @@ jobs:
           sdk="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           apksigner="$(find "$sdk" -name apksigner -type f | sort | tail -n 1)"
           "$apksigner" verify --print-certs "aspatoys-${{ steps.version.outputs.name }}.apk" | tee "$RUNNER_TEMP/apk-certificate.txt"
-          actual="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-certificate.txt" | tr '[:upper:]' '[:lower:]')"
+          actual="$(sed -n 's/^.*certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-certificate.txt" | tr '[:upper:]' '[:lower:]' | sort -u)"
           test "$actual" = "$RELEASE_CERT_SHA256" || {
             echo "::error::APK 证书与 1.1.2 起固定使用的发行证书不一致，拒绝发布。"
             exit 1
@@ -223,13 +233,13 @@ jobs:
           if-no-files-found: error
 
       - name: Publish release
-        if: github.ref_type == 'tag' && steps.signing.outputs.signed == 'true'
+        if: (github.ref_type == 'tag' || inputs.release_version != '') && steps.signing.outputs.signed == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="$GITHUB_REF_NAME"
+          tag="${{ steps.version.outputs.tag }}"
           apk="aspatoys-${{ steps.version.outputs.name }}.apk"
           # 已存在的发行版一律不覆盖：历史上人工上传过资产，工作流后跑不能把它们替换掉。
           if gh release view "$tag" --repo "${{ github.repository }}" > /dev/null 2>&1; then
@@ -246,5 +256,6 @@ jobs:
               --repo "${{ github.repository }}" \
               --title "Astral Party Toys Android ${{ steps.version.outputs.name }}" \
               --notes-file "docs/release-notes/${{ steps.version.outputs.name }}.md" \
+              --verify-tag \
               --latest
           fi
