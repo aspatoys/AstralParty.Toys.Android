@@ -56,6 +56,8 @@ import com.hiynet.aspatoys.ui.components.PackageReportContent
 import com.hiynet.aspatoys.ui.components.Pill
 import com.hiynet.aspatoys.ui.components.SkeletonList
 import com.hiynet.aspatoys.ui.format.Formats
+import com.hiynet.aspatoys.ui.theme.ToysPageHeading
+import com.hiynet.aspatoys.ui.theme.toysPanel
 
 /**
  * 模组页：已装模组（启用/停用、配置）、下载目录里的模组包、本地包检查与安装。
@@ -86,12 +88,13 @@ fun ModsScreen(
     Column(modifier = modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            item { ToysPageHeading("模组管理", "管理已装模组，或从本地导入模组包。") }
             item {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().toysPanel().padding(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -154,7 +157,7 @@ fun ModsScreen(
             }
 
             item {
-                Button(onClick = { pickZip.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }) {
+                Button(modifier = Modifier.fillMaxWidth(), onClick = { pickZip.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }) {
                     Text("从文件安装模组包")
                 }
             }
@@ -363,8 +366,7 @@ private fun InstalledModCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .toysPanel(12)
             .padding(12.dp)
             .animateContentSize(),
     ) {
@@ -451,8 +453,7 @@ private fun PackageCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .toysPanel(12)
             .padding(12.dp),
     ) {
         Text(

@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../CesiumAndroidApi/CesiumAndroidApi.csproj" />
+    <Reference Include="CesiumLoader.SDK"><HintPath>$(CesiumSdkDll)</HintPath><Private>false</Private></Reference>
+    <Reference Include="AstralParty.Runtime"><HintPath>$(GameRefs)/AstralParty.Runtime.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

@@ -15,6 +15,11 @@ env:
   LOADER_REPO: higashitaniyume/CesiumLoader
   # 与当前游戏热更版本绑定的注入产物放在这个发行版里，游戏更新后替换它即可。
   PAYLOAD_TAG: payload
+  # 固定随包加载器版本：发行版不能因为上游又发了新版就悄悄换掉 SDK 与内置模组。
+  # 要升级加载器时改这里（并单独验证一次），不要依赖"取最新"。
+  LOADER_VERSION: "3.8.0"
+  # 1.1.2 起使用独立发行签名；后续版本必须沿用，避免意外换签。
+  RELEASE_CERT_SHA256: "7cdb0644cd2bc4370152643950dde7b8cbf99ba4f770e094e9ecb775ca392bcc"
 
 jobs:
   build:
@@ -31,12 +36,17 @@ jobs:
           set -euo pipefail
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             name="${GITHUB_REF_NAME#v}"
+            # 版本号直接决定版本码，不再混入 run_number：
+            # major.minor.patch 各段按两位拼接（1.1.2 -> 10102），保证单调递增且可复现。
+            IFS='.' read -r major minor patch <<< "$name"
+            code=$(printf '%d%02d%02d' "${major:-0}" "${minor:-0}" "${patch:-0}")
           else
             name="0.0.0-dev.${GITHUB_RUN_NUMBER}"
+            code=$((1000 + GITHUB_RUN_NUMBER))
           fi
           echo "name=$name" >> "$GITHUB_OUTPUT"
-          echo "code=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
-          echo "version=$name"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "version=$name / $code"
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -75,16 +85,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="${{ inputs.loader_tag }}"
-          if [ -z "$tag" ]; then
-            # 取最新的非候选发行版，按版本号排序；不依赖 GitHub 的 latest 指针
-            # （早先的发布把 latest 停留在了旧版本上）。
-            tag="$(gh api "repos/$LOADER_REPO/releases?per_page=100" \
-              --jq '.[] | select(.prerelease == false) | .tag_name' \
-              | grep '^modloader-' | sed 's/^modloader-//' | sort -V | tail -n 1 | sed 's/^/modloader-/')"
-          fi
-          test -n "$tag"
-          version="${tag#modloader-}"
+          version="${LOADER_VERSION}"
+          tag="modloader-${version}"
+          gh release view "$tag" --repo "$LOADER_REPO" > /dev/null
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           mkdir -p loaderpkg
@@ -96,6 +99,29 @@ jobs:
           ls -l loaderpkg/unpacked/AstralParty_ModLoader/sdk
           echo "加载器 $version"
 
+      - name: Build the bundled Android overlay
+        shell: bash
+        env:
+          LOADER_TAG: ${{ steps.loader.outputs.tag }}
+          LOADER_SDK: ${{ steps.loader.outputs.sdk }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/overlay-game-refs
+          base="https://raw.githubusercontent.com/$LOADER_REPO/$LOADER_TAG/refs/game"
+          curl -fsSL "$base/sources.json" -o build/overlay-game-refs/sources.json
+          for file in AstralParty.Runtime.dll UnityEngine.CoreModule.dll; do
+            curl -fsSL "$base/$file" -o "build/overlay-game-refs/$file"
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, json
+          root = Path('build/overlay-game-refs')
+          hashes = json.loads((root / 'sources.json').read_text())['assemblies']
+          for name in ('AstralParty.Runtime.dll', 'UnityEngine.CoreModule.dll'):
+              assert hashlib.sha256((root / name).read_bytes()).hexdigest() == hashes[name], name
+          PY
+          python3 mods/build.py --refs build/overlay-game-refs --sdk "$LOADER_SDK"
+
       - name: Fetch the injected game assembly
         shell: bash
         env:
@@ -103,20 +129,52 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p payload
-          url="${{ inputs.injected_url }}"
-          if [ -n "$url" ]; then
-            curl -fsSL "$url" -o payload/AstralParty.Runtime.injected.dll
-          else
-            gh release download "$PAYLOAD_TAG" --repo "${{ github.repository }}" \
-              --pattern "AstralParty.Runtime.injected.dll" --dir payload
-          fi
+          gh release download "$PAYLOAD_TAG" --repo "${{ github.repository }}" \
+            --pattern "AstralParty.Runtime.injected.dll" --dir payload
           ls -l payload
+
+      - name: Prepare verified offline recovery
+        run: python3 installer/prepare-recovery.py --download
+
+      - name: Prepare release keystore
+        id: signing
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.ASPATOYS_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -n "${KEYSTORE_B64}" ]; then
+            mkdir -p "$RUNNER_TEMP/signing"
+            printf '%s' "${KEYSTORE_B64}" | base64 -d > "$RUNNER_TEMP/signing/release.keystore"
+            echo "keystore=$RUNNER_TEMP/signing/release.keystore" >> "$GITHUB_OUTPUT"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+            echo "使用仓库配置的发行密钥库"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+              echo "::error::缺少发行签名：仓库未配置 ASPATOYS_KEYSTORE_BASE64 等 secrets，tag 发行必须使用正式密钥签名，拒绝用调试密钥发布。"
+              exit 1
+            fi
+            echo "未配置发行密钥库：本次只产出调试签名的构建产物，不用于发行。"
+          fi
 
       - name: Build and test
         shell: bash
+        env:
+          ASPATOYS_KEYSTORE: ${{ steps.signing.outputs.keystore }}
+          ASPATOYS_KEYSTORE_PASSWORD: ${{ secrets.ASPATOYS_KEYSTORE_PASSWORD }}
+          ASPATOYS_KEY_ALIAS: ${{ secrets.ASPATOYS_KEY_ALIAS }}
+          ASPATOYS_KEY_PASSWORD: ${{ secrets.ASPATOYS_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           chmod +x gradlew
+          if [ "${{ steps.signing.outputs.signed }}" = "true" ]; then
+            task=":app:assembleRelease"
+            out="app/build/outputs/apk/release/app-release.apk"
+          else
+            task=":app:assembleDebug"
+            out="app/build/outputs/apk/debug/app-debug.apk"
+          fi
           ./gradlew --no-daemon --console=plain \
             -PappVersionName="${{ steps.version.outputs.name }}" \
             -PappVersionCode="${{ steps.version.outputs.code }}" \
@@ -124,37 +182,69 @@ jobs:
             -PcesiumSdkDll="${{ steps.loader.outputs.sdk }}" \
             -PcesiumBootstrapDll="$PWD/loader/managed/CesiumLoader.Android.Bootstrap/bin/Release/netstandard2.0/CesiumLoader.Android.Bootstrap.dll" \
             -PcesiumInjectedDll="$PWD/payload/AstralParty.Runtime.injected.dll" \
-            :app:testDebugUnitTest :app:assembleDebug
+            :app:testDebugUnitTest "$task"
+          echo "out=$out" >> "$GITHUB_ENV"
 
       - name: Show bundled loader version
         shell: bash
         run: cat app/src/main/assets/cesium/loader.json
 
-      - name: Name the APK
+      - name: Name the APK and checksum
         shell: bash
         run: |
           set -euo pipefail
-          cp app/build/outputs/apk/debug/app-debug.apk \
-             "aspatoys-${{ steps.version.outputs.name }}.apk"
-          ls -l aspatoys-*.apk
+          cp "$out" "aspatoys-${{ steps.version.outputs.name }}.apk"
+          sha256sum "aspatoys-${{ steps.version.outputs.name }}.apk" | awk '{print $1}' \
+            > "aspatoys-${{ steps.version.outputs.name }}.apk.sha256"
+          cat "aspatoys-${{ steps.version.outputs.name }}.apk.sha256"
+          ls -l aspatoys-*.apk*
+
+      - name: Verify signature
+        if: steps.signing.outputs.signed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          apksigner="$(find "$sdk" -name apksigner -type f | sort | tail -n 1)"
+          "$apksigner" verify --print-certs "aspatoys-${{ steps.version.outputs.name }}.apk" | tee "$RUNNER_TEMP/apk-certificate.txt"
+          actual="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-certificate.txt" | tr '[:upper:]' '[:lower:]')"
+          test "$actual" = "$RELEASE_CERT_SHA256" || {
+            echo "::error::APK 证书与 1.1.2 起固定使用的发行证书不一致，拒绝发布。"
+            exit 1
+          }
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: aspatoys-${{ steps.version.outputs.name }}
-          path: aspatoys-${{ steps.version.outputs.name }}.apk
+          path: |
+            aspatoys-${{ steps.version.outputs.name }}.apk
+            aspatoys-${{ steps.version.outputs.name }}.apk.sha256
           if-no-files-found: error
 
       - name: Publish release
-        if: github.ref_type == 'tag'
+        if: github.ref_type == 'tag' && steps.signing.outputs.signed == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          notes=$(printf '内置加载器：`%s`\n\n- 安装前需在设备上运行 Shizuku 并授权\n- 首次使用请在「加载器」页点「安装加载器」\n- 已装模组与市场可在应用内管理\n' "${{ steps.loader.outputs.version }}")
-          gh release create "$GITHUB_REF_NAME" "aspatoys-${{ steps.version.outputs.name }}.apk" \
-            --repo "${{ github.repository }}" \
-            --title "Astral Party Toys Android ${{ steps.version.outputs.name }}" \
-            --notes "$notes" \
-            --latest
+          tag="$GITHUB_REF_NAME"
+          apk="aspatoys-${{ steps.version.outputs.name }}.apk"
+          # 已存在的发行版一律不覆盖：历史上人工上传过资产，工作流后跑不能把它们替换掉。
+          if gh release view "$tag" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            echo "发行版 $tag 已存在，跳过创建"
+            if gh release view "$tag" --repo "${{ github.repository }}" --json assets \
+              --jq '.assets[].name' | grep -Fxq "$apk"; then
+              echo "资产 $apk 已存在，保持原样"
+              exit 0
+            fi
+            gh release upload "$tag" "$apk" "$apk.sha256" \
+              --repo "${{ github.repository }}"
+          else
+            gh release create "$tag" "$apk" "$apk.sha256" \
+              --repo "${{ github.repository }}" \
+              --title "Astral Party Toys Android ${{ steps.version.outputs.name }}" \
+              --notes-file "docs/release-notes/${{ steps.version.outputs.name }}.md" \
+              --latest
+          fi

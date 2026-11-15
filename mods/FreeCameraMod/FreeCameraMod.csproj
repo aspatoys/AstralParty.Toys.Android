@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <Reference Include="CesiumLoader.SDK"><HintPath>$(CesiumSdkDll)</HintPath><Private>false</Private></Reference>
+    <Reference Include="AstralParty.Runtime"><HintPath>$(GameRefs)/AstralParty.Runtime.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

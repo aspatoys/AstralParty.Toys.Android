@@ -2,10 +2,13 @@ package com.hiynet.aspatoys.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 
 /**
  * 品牌配色。不跟随系统动态取色：动态色会把主题换成壁纸的调子，
@@ -26,16 +29,23 @@ private val LightColorScheme = lightColorScheme(
     onTertiaryContainer = OnGoldContainer,
     background = Paper,
     onBackground = Ink,
-    surface = Paper,
+    surface = Color.White,
     onSurface = Ink,
     surfaceVariant = PaperVariant,
     onSurfaceVariant = InkVariant,
-    outline = InkVariant,
+    outline = Color(0xFF85899B),
+    outlineVariant = Color(0xFFDADCE6),
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color(0xEDFFFFFF),
+    surfaceContainer = Color(0xFFF1F0F6),
+    surfaceContainerHigh = Color(0xFFE9E8F0),
+    surfaceContainerHighest = Color(0xFFE3E3ED),
+    surfaceTint = Color.Transparent,
 )
 
 private val DarkColorScheme = darkColorScheme(
     primary = RaspberryLight,
-    onPrimary = Color(0xFF64122F),
+    onPrimary = Color(0xFF300014),
     primaryContainer = RaspberryContainerDark,
     onPrimaryContainer = RaspberryContainer,
     secondary = DenimLight,
@@ -47,12 +57,27 @@ private val DarkColorScheme = darkColorScheme(
     tertiaryContainer = GoldContainerDark,
     onTertiaryContainer = GoldContainer,
     background = Night,
-    onBackground = Color(0xFFF0DEE1),
-    surface = Night,
-    onSurface = Color(0xFFF0DEE1),
+    onBackground = Color(0xFFF3F5FA),
+    surface = Color(0xFF1A1D2E),
+    onSurface = Color(0xFFF3F5FA),
     surfaceVariant = NightSurfaceVariant,
-    onSurfaceVariant = Color(0xFFD6C2C5),
-    outline = Color(0xFF9E8C8F),
+    onSurfaceVariant = Color(0xFFC6CDDB),
+    outline = Color(0xFF8B92AA),
+    outlineVariant = Color(0xFF3A3F55),
+    surfaceContainerLowest = Color(0xFF0D0F18),
+    surfaceContainerLow = Color(0xD91A1D2E),
+    surfaceContainer = Color(0xFF20243A),
+    surfaceContainerHigh = Color(0xFF282D45),
+    surfaceContainerHighest = Color(0xFF323851),
+    surfaceTint = Color.Transparent,
+)
+
+private val ToysShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(14.dp),
+    large = RoundedCornerShape(20.dp),
+    extraLarge = RoundedCornerShape(24.dp),
 )
 
 @Composable
@@ -63,6 +88,7 @@ fun AstralPartyToysTheme(
     MaterialTheme(
         colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme,
         typography = Typography,
+        shapes = ToysShapes,
         content = content,
     )
 }

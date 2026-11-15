@@ -145,28 +145,7 @@ object ShizukuShell {
      * 也省了一份落盘。
      */
     fun writeStream(script: String, source: java.io.InputStream) {
-        val process = start(script)
-        // stderr 必须同时抽干：只写不读，管道写满后双方都会卡住。
-        val stderr = StringBuilder()
-        val drain = Thread {
-            runCatching { process.errorStream.bufferedReader().use { stderr.append(it.readText()) } }
-        }.apply {
-            isDaemon = true
-            start()
-        }
-        try {
-            process.outputStream.use { sink -> source.copyTo(sink, 64 * 1024) }
-        } catch (error: Throwable) {
-            runCatching { process.destroy() }
-            throw IllegalStateException("写入通道中断：${error.message ?: error}")
-        }
-        val code = process.waitFor()
-        drain.join(2000)
-        if (code != 0) {
-            throw IllegalStateException(
-                "写入失败（退出码 $code）：" + stderr.toString().ifBlank { "没有输出" }.trim().take(400),
-            )
-        }
+        ProcessStreamWriter.write(start(script), source)
     }
 
     private fun start(script: String): Process {

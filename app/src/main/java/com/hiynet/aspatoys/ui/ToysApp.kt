@@ -1,15 +1,30 @@
 package com.hiynet.aspatoys.ui
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
+import android.content.res.Configuration
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -20,10 +35,9 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -41,6 +55,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import com.hiynet.aspatoys.R
 import com.hiynet.aspatoys.data.AppContainer
 import com.hiynet.aspatoys.installer.LoaderInstaller
@@ -51,6 +68,11 @@ import com.hiynet.aspatoys.ui.market.MarketScreen
 import com.hiynet.aspatoys.ui.mods.ModsController
 import com.hiynet.aspatoys.ui.mods.ModsScreen
 import com.hiynet.aspatoys.ui.settings.SettingsScreen
+import com.hiynet.aspatoys.ui.theme.ToysBackdrop
+import com.hiynet.aspatoys.ui.theme.ToysBrandHeader
+import com.hiynet.aspatoys.ui.theme.ToysMotion
+import com.hiynet.aspatoys.ui.theme.toysPressFeedback
+import com.hiynet.aspatoys.ui.theme.OverlayAppearanceSync
 
 /** 四个顶层页面：模组、市场、加载器、设置。图标统一成同一套 Material 线性字形。 */
 enum class Destination(val label: String, val icon: Int) {
@@ -63,7 +85,7 @@ enum class Destination(val label: String, val icon: Int) {
 /**
  * App 外壳：装配依赖、持有页面状态、按窗口宽度切换导航。
  *
- * 手机竖屏用底部导航；平板/横屏（>= 900dp）改用左侧 NavigationRail，
+ * 竖屏用悬浮 Dock；横屏改用左侧 NavigationRail，
  * 让内容拿到完整高度，市场页也能左右分栏。
  */
 @Composable
@@ -74,49 +96,62 @@ fun ToysApp() {
     val market = remember { MarketController(container, scope) }
     val mods = remember { ModsController(container, scope, appContext) }
     val installer = remember { LoaderInstaller(appContext) }
+    OverlayAppearanceSync(container.settings)
 
     var destination by rememberSaveable { mutableStateOf(Destination.MODS) }
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val wide = maxWidth >= 900.dp
-
-        if (wide) {
-            CompositionLocalProvider(
-                LocalContentColor provides MaterialTheme.colorScheme.onBackground,
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background)
-                        .windowInsetsPadding(WindowInsets.safeDrawing),
-                ) {
-                NavigationRail {
-                    Spacer(Modifier.height(12.dp))
-                    Destination.entries.forEach { item ->
-                        NavigationRailItem(
-                            selected = item == destination,
-                            onClick = { if (destination != item) destination = item },
-                            icon = { Icon(painterResource(item.icon), contentDescription = item.label) },
-                            label = { Text(item.label) },
-                        )
-                    }
-                }
-                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                    if (destination == Destination.MARKET) {
-                        DestinationContent(
-                            destination = destination,
-                            market = market,
-                            mods = mods,
-                            installer = installer,
-                            container = container,
-                            onOpenSettings = { destination = Destination.SETTINGS },
-                            modifier = Modifier.fillMaxSize(),
-                        )
+    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            ToysBackdrop(settings = container.settings)
+            Column(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                ToysBrandHeader(page = destination.label)
+                Box(modifier = Modifier.weight(1f).fillMaxSize()) {
+                    val wide = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+                    if (wide) {
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            NavigationRail(containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.94f)) {
+                                Spacer(Modifier.height(12.dp))
+                                Destination.entries.forEach { item ->
+                                    val interactions = remember { MutableInteractionSource() }
+                                    NavigationRailItem(
+                                        selected = item == destination,
+                                        onClick = { if (destination != item) destination = item },
+                                        icon = { Icon(painterResource(item.icon), contentDescription = item.label) },
+                                        label = { Text(item.label) },
+                                        modifier = Modifier.toysPressFeedback(interactions),
+                                        interactionSource = interactions,
+                                        colors = NavigationRailItemDefaults.colors(
+                                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                                            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        ),
+                                    )
+                                }
+                            }
+                            Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.TopCenter) {
+                                DestinationContent(
+                                    destination = destination,
+                                    market = market,
+                                    mods = mods,
+                                    installer = installer,
+                                    container = container,
+                                    onOpenSettings = { destination = Destination.SETTINGS },
+                                    modifier = if (destination == Destination.MARKET) Modifier.fillMaxSize()
+                                        else Modifier.widthIn(max = 980.dp).fillMaxHeight(),
+                                )
+                            }
+                        }
                     } else {
-                        Box(
+                        Scaffold(
                             modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.TopCenter,
-                        ) {
+                            containerColor = Color.Transparent,
+                            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                            bottomBar = {
+                                ToysDock(destination = destination, onSelect = { destination = it })
+                            },
+                        ) { innerPadding ->
                             DestinationContent(
                                 destination = destination,
                                 market = market,
@@ -124,40 +159,11 @@ fun ToysApp() {
                                 installer = installer,
                                 container = container,
                                 onOpenSettings = { destination = Destination.SETTINGS },
-                                modifier = Modifier
-                                    .widthIn(max = 980.dp)
-                                    .fillMaxHeight(),
+                                modifier = Modifier.fillMaxSize().padding(innerPadding),
                             )
                         }
                     }
                 }
-            }
-            }
-        } else {
-            Scaffold(
-                modifier = Modifier.fillMaxSize(),
-                bottomBar = {
-                    NavigationBar {
-                        Destination.entries.forEach { item ->
-                            NavigationBarItem(
-                                selected = item == destination,
-                                onClick = { if (destination != item) destination = item },
-                                icon = { Icon(painterResource(item.icon), contentDescription = item.label) },
-                                label = { Text(item.label) },
-                            )
-                        }
-                    }
-                },
-            ) { innerPadding ->
-                DestinationContent(
-                    destination = destination,
-                    market = market,
-                    mods = mods,
-                    installer = installer,
-                    container = container,
-                    onOpenSettings = { destination = Destination.SETTINGS },
-                    modifier = Modifier.fillMaxSize().padding(innerPadding),
-                )
             }
         }
     }
@@ -178,13 +184,15 @@ private fun DestinationContent(
             targetState = destination,
             transitionSpec = {
                 val forward = targetState.ordinal > initialState.ordinal
-                val slide = if (forward) {
-                    AnimatedContentTransitionScope.SlideDirection.Left
-                } else {
-                    AnimatedContentTransitionScope.SlideDirection.Right
-                }
-                (slideIntoContainer(slide, animationSpec = tween(180)) + fadeIn(tween(180))) togetherWith
-                    (slideOutOfContainer(slide, animationSpec = tween(180)) + fadeOut(tween(120)))
+                val direction = if (forward) 1 else -1
+                (slideInHorizontally(
+                    animationSpec = tween(ToysMotion.Enter, easing = ToysMotion.Easing),
+                    initialOffsetX = { (it * 0.025f).toInt() * direction },
+                ) + fadeIn(tween(ToysMotion.Enter))) togetherWith
+                    (slideOutHorizontally(
+                        animationSpec = tween(ToysMotion.Exit, easing = ToysMotion.Easing),
+                        targetOffsetX = { -(it * 0.015f).toInt() * direction },
+                    ) + fadeOut(tween(ToysMotion.Fast)))
             },
             label = "destination",
         ) { target ->
@@ -213,6 +221,57 @@ private fun DestinationContent(
                     },
                     onReviewConsent = { market.reviewConsent() },
                 )
+            }
+        }
+    }
+}
+
+
+/** Floating portrait navigation. Scaffold reserves its whole height, including the outer gap. */
+@Composable
+internal fun ToysDock(destination: Destination, onSelect: (Destination) -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Box(
+        Modifier.testTag("navigation.dock").fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            modifier = Modifier.widthIn(max = 460.dp).fillMaxWidth(),
+            shape = RoundedCornerShape(28.dp),
+            color = scheme.surfaceContainerLow,
+            border = BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.55f)),
+            shadowElevation = 12.dp,
+        ) {
+            Row(
+                Modifier.selectableGroup().padding(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Destination.entries.forEach { item ->
+                    val selected = item == destination
+                    val interactions = remember { MutableInteractionSource() }
+                    Column(
+                        modifier = Modifier.weight(1f).testTag("navigation.${item.name.lowercase()}")
+                            .clip(RoundedCornerShape(22.dp))
+                            .background(if (selected) scheme.primary.copy(alpha = 0.14f) else Color.Transparent)
+                            .toysPressFeedback(interactions)
+                            .selectable(
+                                selected = selected,
+                                role = Role.Tab,
+                                interactionSource = interactions,
+                                indication = androidx.compose.foundation.LocalIndication.current,
+                                onClick = { if (!selected) onSelect(item) },
+                            )
+                            .heightIn(min = 60.dp)
+                            .padding(horizontal = 2.dp, vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+                    ) {
+                        val color = if (selected) scheme.primary else scheme.onSurfaceVariant
+                        Icon(painterResource(item.icon), contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
+                        Text(item.label, style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, color = color)
+                    }
+                }
             }
         }
     }

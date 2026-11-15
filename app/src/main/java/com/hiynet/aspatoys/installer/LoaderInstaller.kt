@@ -1,6 +1,10 @@
 package com.hiynet.aspatoys.installer
 
 import android.content.Context
+import android.content.res.Configuration
+import com.hiynet.aspatoys.data.loader.BuiltinOverlay
+import com.hiynet.aspatoys.data.settings.AppSettings
+import com.hiynet.aspatoys.data.loader.ShizukuLoaderFs
 import com.hiynet.cesiumloader.core.unity.TextAssetPatch
 import com.hiynet.cesiumloader.core.unity.UnityFs
 import com.hiynet.cesiumloader.core.unity.UnityFsWriter
@@ -14,9 +18,17 @@ import java.security.MessageDigest
  *
  * 注入产物的来源：`assets/cesium/AstralParty.Runtime.injected.dll`。往程序集里写 IL 需要
  * Mono.Cecil，手机上不做，所以这一份随包带、并且**锁死游戏版本**：只有原包 SHA-256 等于
- * [ORIGINAL_SHA256] 才允许安装，换版本必须重新生成。
+ * [ORIGINAL_SHA256] 才执行注入；[PATCHED_SHA256] 是同一版本的已安装产物，只更新载荷。
+ * 其它游戏版本必须重新生成适配；还原优先验证本地备份，损坏时使用随包的已校验原包。
  */
-class LoaderInstaller(private val context: Context) {
+class LoaderInstaller(
+    private val context: Context,
+    private val bundleIo: BundleIo = ShizukuBundleIo(File(context.getExternalFilesDir(null) ?: context.filesDir, "loader-installer/transport")),
+    private val originalSource: () -> ByteArray = { context.assets.open(ORIGINAL_ASSET).use { it.readBytes() } },
+    private val candidatePaths: () -> List<String> = { discoverBundlePaths() },
+    private val serviceAvailable: () -> Boolean = { ShizukuShell.isServiceAlive() },
+    private val permissionGranted: () -> Boolean = { ShizukuShell.hasPermission() },
+) {
 
     companion object {
         const val GAME_PACKAGE = "com.feimo.astralparty"
@@ -25,6 +37,8 @@ class LoaderInstaller(private val context: Context) {
 
         /** 当前游戏热更版本的原包指纹（未注入过）。 */
         const val ORIGINAL_SHA256 = "77da946bf7d331351a93ff16707aab426f534b7577a771f21267478b7bc70c87"
+        const val PATCHED_SHA256 = "37fc6d8576529a501c9a3aa0bef25ad70ad13881c0b811f9d245d434eac57991"
+        const val ORIGINAL_ASSET = "cesium/recovery/original.bundle"
 
         /** 随包注入产物的指纹，防止 assets 被换掉。 */
         const val INJECTED_SHA256 = "b5ed46ddef35842d1695476ca6edfc2849f8938f22f02ddb05c608dd91ab4b2c"
@@ -44,6 +58,13 @@ class LoaderInstaller(private val context: Context) {
 
         /** 与 [com.hiynet.cesiumloader.core.CesiumLayout] 保持一致：SDK 在 sdk/，引导在 bootstrap/。 */
         val BOOTSTRAP_REMOTE = "$LOADER_ROOT/bootstrap/CesiumLoader.Android.Bootstrap.dll"
+
+        private fun discoverBundlePaths(): List<String> {
+            val pattern = "/sdcard/Android/data/$GAME_PACKAGE/files/com.unity.addressables/AssetBundles/$BUNDLE_KEY/*/__data"
+            // Unity leaves old version folders behind; prefer the newest cache instead of lexical order.
+            return ShizukuShell.exec("ls -t $pattern 2>/dev/null; true")
+                .lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+        }
     }
 
     data class Status(
@@ -56,18 +77,23 @@ class LoaderInstaller(private val context: Context) {
         val hasBackup: Boolean = false,
         val loaderPayload: Boolean = false,
         val note: String = "",
+        val cacheState: String = "未检测",
     )
 
     private val workDir: File
         get() = File(context.getExternalFilesDir(null) ?: context.filesDir, "loader-installer").apply { mkdirs() }
 
-    private val backupFile: File get() = File(workDir, "__data.orig")
+    private val originalPayload by lazy { originalSource() }
+    private val transaction by lazy {
+        LoaderBundleTransaction(workDir, bundleIo, { originalPayload }, ::patchBundle, ::deployPayload,
+            ORIGINAL_SHA256, PATCHED_SHA256)
+    }
 
     // ---------------------------------------------------------------- 状态
 
     fun status(): Status {
         val rootSelected = ShizukuShell.selectedMode() == com.hiynet.aspatoys.data.settings.AppSettings.PrivilegeRoot
-        if (!ShizukuShell.isServiceAlive()) {
+        if (!serviceAvailable()) {
             return Status(
                 note = if (rootSelected) {
                     "Root 不可用：${RootShell.lastError ?: "没有找到 su"}"
@@ -76,30 +102,39 @@ class LoaderInstaller(private val context: Context) {
                 },
             )
         }
-        if (!ShizukuShell.hasPermission()) {
+        if (!permissionGranted()) {
             return Status(
                 shizukuAlive = true,
                 note = if (rootSelected) "Root 不可用：${RootShell.lastError ?: "没有拿到 su 权限"}" else "还没授权 Shizuku",
             )
         }
 
-        val path = runCatching { resolveBundle() }.getOrNull()
-            ?: return Status(shizukuAlive = true, shizukuGranted = true, note = "找不到游戏缓存包：先启动一次游戏")
-        val sha = runCatching { sha256Remote(path) }.getOrNull()
+        val resolution = runCatching { resolveBundle() }
+        val path = resolution.getOrNull()
+            ?: return Status(shizukuAlive = true, shizukuGranted = true,
+                note = resolution.exceptionOrNull()?.message ?: "找不到游戏缓存包：先启动一次游戏")
+        val sha = runCatching { bundleIo.hash(path) }.getOrNull()
+        val state = transaction.classify(sha)
 
         return Status(
             shizukuAlive = true,
             shizukuGranted = true,
             bundlePath = path,
             bundleSha256 = sha,
-            injected = sha != null && sha != ORIGINAL_SHA256,
-            supportedVersion = sha == ORIGINAL_SHA256,
-            hasBackup = backupFile.isFile,
+            injected = state == LoaderBundleTransaction.State.INSTALLED,
+            supportedVersion = state != LoaderBundleTransaction.State.UNKNOWN,
+            hasBackup = transaction.backupAvailable(sha),
             loaderPayload = runCatching { hasPayload() }.getOrDefault(false),
             note = when {
                 sha == null -> "读不到缓存包指纹"
                 sha == ORIGINAL_SHA256 -> "原版缓存包，可以安装"
-                else -> "缓存包已不是原版（可能已装过或游戏更新），可先还原"
+                sha == PATCHED_SHA256 -> "已识别本版本加载器，可重复更新或校验后还原"
+                else -> "未知缓存版本，未判定为已注入；请勿使用旧原包覆盖更新后的游戏"
+            },
+            cacheState = when (state) {
+                LoaderBundleTransaction.State.ORIGINAL -> "原版"
+                LoaderBundleTransaction.State.INSTALLED -> "已安装"
+                LoaderBundleTransaction.State.UNKNOWN -> "未知版本"
             },
         )
     }
@@ -108,63 +143,31 @@ class LoaderInstaller(private val context: Context) {
 
     /** 安装：备份原包 → 注入程序集 → 重封装容器 → 部署载荷 → 写回。返回安装后的状态。 */
     fun install(log: (String) -> Unit): Status {
-        require(ShizukuShell.hasPermission()) { "先给 Shizuku 授权" }
-        val remote = resolveBundle()
-
-        log("缓存包：$remote")
-        log("拉取原包")
-        val original = File(workDir, "__data.orig")
-        ShizukuShell.exec("cat " + ShizukuShell.quote(remote) + " > " + ShizukuShell.quote(original.absolutePath))
-
-        val originalSha = sha256(original)
-        log("原包 ${original.length()} B  sha256=$originalSha")
-        require(originalSha == ORIGINAL_SHA256) {
-            "缓存包版本不支持（期望 $ORIGINAL_SHA256，实际 $originalSha）：游戏更新过就必须重新生成注入产物"
-        }
-
-        log("注入程序集 ${ASSEMBLY}")
-        val patched = patchBundle(original.readBytes(), log)
-
-        val patchedFile = File(workDir, "__data.patched")
-        patchedFile.writeBytes(patched)
-        val patchedSha = sha256(patchedFile)
-        log("新包 ${patched.size} B  sha256=$patchedSha")
-
-        log("部署加载器载荷")
-        deployPayload(log)
-
-        log("停掉游戏进程")
-        runCatching { ShizukuShell.exec("am force-stop $GAME_PACKAGE") }
-
-        log("写回缓存包")
-        ShizukuShell.exec("cat " + ShizukuShell.quote(patchedFile.absolutePath) + " > " + ShizukuShell.quote(remote))
-
-        val remoteSha = sha256Remote(remote)
-        require(remoteSha == patchedSha) { "写回校验失败：设备上是 $remoteSha" }
-        log("写回校验通过")
+        require(permissionGranted()) { "先给 Shizuku / Root 授权" }
+        transaction.install(resolveBundle(), log)
         return status()
     }
 
-    /** 还原：把备份的原包写回去。 */
+    /** 还原：把备份的原包写回去。损坏的旧备份不会被当作原版；内置恢复资源也必须通过指纹校验。 */
     fun restore(log: (String) -> Unit): Status {
-        require(ShizukuShell.hasPermission()) { "先给 Shizuku 授权" }
-        require(backupFile.isFile) { "没有备份，无法还原" }
-        val backupSha = sha256(backupFile)
-        require(backupSha == ORIGINAL_SHA256) { "备份文件指纹不对（$backupSha），拒绝写回" }
-
-        val remote = resolveBundle()
-        log("停掉游戏进程")
-        runCatching { ShizukuShell.exec("am force-stop $GAME_PACKAGE") }
-        log("写回原包 ${backupFile.length()} B")
-        ShizukuShell.exec("cat " + ShizukuShell.quote(backupFile.absolutePath) + " > " + ShizukuShell.quote(remote))
-
-        val remoteSha = sha256Remote(remote)
-        require(remoteSha == ORIGINAL_SHA256) { "还原校验失败：设备上是 $remoteSha" }
-        log("还原校验通过")
+        require(permissionGranted()) { "先给 Shizuku / Root 授权" }
+        transaction.restore(resolveBundle(), log)
         return status()
     }
 
     // ---------------------------------------------------------------- 内部
+
+    /** Update the in-game overlay without rewriting the game's resource bundle. */
+    fun installOverlay(log: (String) -> Unit): Status {
+        val settings = AppSettings(context)
+        installOverlayAt(settings.loaderRootPath, log)
+        return status()
+    }
+
+    private fun installOverlayAt(root: String, log: (String) -> Unit) {
+        val dark = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        BuiltinOverlay(context).install(root, AppSettings(context).themeMode, dark, log)
+    }
 
     private fun patchBundle(original: ByteArray, log: (String) -> Unit): ByteArray {
         val injected = context.assets.open(INJECTED_ASSET).use { it.readBytes() }
@@ -206,6 +209,7 @@ class LoaderInstaller(private val context: Context) {
         }
 
         deployBuiltInMods(log)
+        installOverlayAt(LOADER_ROOT, log)
         writeInstalledIndex(log)
     }
 
@@ -246,9 +250,7 @@ class LoaderInstaller(private val context: Context) {
             appendLine("]")
             appendLine("}")
         }
-        val local = File(workDir, "installed.json")
-        local.writeText(payload, Charsets.UTF_8)
-        ShizukuShell.exec("cat " + ShizukuShell.quote(local.absolutePath) + " > " + ShizukuShell.quote("$LOADER_ROOT/installed.json"))
+        ShizukuLoaderFs().writeText("$LOADER_ROOT/installed.json", payload)
         log("installed.json 已写入（${modIds.size} 个内置模组）")
     }
 
@@ -256,6 +258,9 @@ class LoaderInstaller(private val context: Context) {
     private fun deployBuiltInMods(log: (String) -> Unit) {
         val modIds = context.assets.list(MODS_ASSET_DIR).orEmpty()
             .filterNot { it == "LanguageUnlockMod" }
+            .filterNot { it == BuiltinOverlay.ID }
+            .filterNot { it == BuiltinOverlay.SPEED_ID }
+            .filterNot { it == BuiltinOverlay.CAMERA_ID }
             .sorted()
         var files = 0
 
@@ -285,30 +290,24 @@ class LoaderInstaller(private val context: Context) {
         val local = File(workDir, relative)
         local.parentFile?.mkdirs()
         context.assets.open(asset).use { input -> local.outputStream().use { input.copyTo(it) } }
+        val fs = ShizukuLoaderFs()
         val remote = "$LOADER_ROOT/$relative"
-        val remoteDir = remote.substringBeforeLast('/')
-        ShizukuShell.exec("mkdir -p " + ShizukuShell.quote(remoteDir))
-        ShizukuShell.exec(
-            "cat " + ShizukuShell.quote(local.absolutePath) + " > " + ShizukuShell.quote(remote),
-        )
+        fs.makeDirectories(remote.substringBeforeLast('/'))
+        fs.copyIn(local, remote)
     }
 
     private fun hasPayload(): Boolean {
-        val out = ShizukuShell.exec("ls " + ShizukuShell.quote("$LOADER_ROOT/sdk/CesiumLoader.SDK.dll") + " 2>/dev/null || true")
-        return out.isNotBlank()
+        return runCatching { bundleIo.read("$LOADER_ROOT/sdk/CesiumLoader.SDK.dll").isNotEmpty() }.getOrDefault(false)
     }
 
     private fun resolveBundle(): String {
-        val pattern = "/sdcard/Android/data/$GAME_PACKAGE/files/com.unity.addressables/AssetBundles/$BUNDLE_KEY/*/__data"
-        val out = ShizukuShell.exec("ls $pattern 2>/dev/null | head -n 1")
-        val path = out.lineSequence().firstOrNull { it.isNotBlank() }?.trim()
-        require(!path.isNullOrEmpty()) { "在设备上找不到游戏的缓存包（先启动一次游戏）" }
-        return path
-    }
-
-    private fun sha256Remote(path: String): String {
-        val out = ShizukuShell.exec("sha256sum " + ShizukuShell.quote(path))
-        return out.trim().substringBefore(' ').lowercase()
+        val valid = Regex("/sdcard/Android/data/" + Regex.escape(GAME_PACKAGE) +
+            "/files/com\\.unity\\.addressables/AssetBundles/" + BUNDLE_KEY + "/[a-f0-9]{32}/__data")
+        val paths = candidatePaths().distinct()
+        require(paths.isNotEmpty()) { "在设备上找不到游戏缓存包（先启动一次游戏）" }
+        require(paths.all { valid.matches(it) }) { "发现异常缓存路径，未修改任何资源" }
+        // Paths are ordered by mtime. Never select an older supported cache over a newer unknown one.
+        return paths.first()
     }
 
     private fun sha256(file: File): String = sha256(file.readBytes())
