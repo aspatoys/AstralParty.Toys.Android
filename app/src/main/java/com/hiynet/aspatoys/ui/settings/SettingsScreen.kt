@@ -627,22 +627,41 @@ private fun SettingsDetailView(
                     )
                 }
 
-                ToysSection("项目与许可") {
+                ToysSection("相关项目仓库") {
                     Text(
-                        "开源许可：GNU Affero General Public License v3.0 (AGPL-3.0)",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    Text(
-                        "桌面版源码：https://github.com/higashitaniyume/AstralParty.Toys",
+                        "点击即可在浏览器中访问对应开源仓库：",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    OutlinedButton(
-                        onClick = { openUrl("https://github.com/higashitaniyume/AstralParty.Toys") },
-                        modifier = Modifier.padding(top = 4.dp),
-                    ) {
-                        Text("访问桌面版项目仓库")
-                    }
+
+                    RepositoryItem(
+                        title = "安卓版 Toys 仓库",
+                        description = "安卓端模组管理、加载器部署与游戏内悬浮窗",
+                        url = "https://github.com/higashitaniyume/AstralParty.Toys.Android",
+                        onOpenUrl = openUrl,
+                    )
+
+                    RepositoryItem(
+                        title = "桌面版 Toys 仓库",
+                        description = "Windows 桌面端多功能工具箱与模组管理",
+                        url = "https://github.com/higashitaniyume/AstralParty.Toys",
+                        onOpenUrl = openUrl,
+                    )
+
+                    RepositoryItem(
+                        title = "CesiumLoader 加载器",
+                        description = "原生注入补丁、引导器与模组 SDK 核心",
+                        url = "https://github.com/higashitaniyume/CesiumLoader",
+                        onOpenUrl = openUrl,
+                    )
+                }
+
+                ToysSection("开源许可") {
+                    Text(
+                        "本项目采用 GNU Affero General Public License v3.0 (AGPL-3.0) 协议开源。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -756,6 +775,59 @@ private fun ContributorCard(
                 )
             }
         }
+    }
+}
+
+/** 开源项目仓库列表项。 */
+@Composable
+private fun RepositoryItem(
+    title: String,
+    description: String,
+    url: String,
+    onOpenUrl: (String) -> Unit,
+) {
+    val interactions = remember { MutableInteractionSource() }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+            .toysPressFeedback(interactions)
+            .clickable(
+                interactionSource = interactions,
+                indication = androidx.compose.foundation.LocalIndication.current,
+                onClick = { onOpenUrl(url) },
+            )
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = url,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Icon(
+            painter = painterResource(R.drawable.ic_chevron_right),
+            contentDescription = "访问仓库",
+            modifier = Modifier.size(18.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

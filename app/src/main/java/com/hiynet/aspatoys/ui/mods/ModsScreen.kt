@@ -2,22 +2,33 @@ package com.hiynet.aspatoys.ui.mods
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -28,10 +39,12 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -45,10 +58,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.hiynet.aspatoys.R
 import com.hiynet.aspatoys.data.mods.ModEntry
 import com.hiynet.aspatoys.data.mods.ModIssue
 import com.hiynet.aspatoys.ui.components.MessageBanner
@@ -56,8 +71,10 @@ import com.hiynet.aspatoys.ui.components.PackageReportContent
 import com.hiynet.aspatoys.ui.components.Pill
 import com.hiynet.aspatoys.ui.components.SkeletonList
 import com.hiynet.aspatoys.ui.format.Formats
+import com.hiynet.aspatoys.ui.theme.ToysMotion
 import com.hiynet.aspatoys.ui.theme.ToysPageHeading
 import com.hiynet.aspatoys.ui.theme.toysPanel
+import com.hiynet.aspatoys.ui.theme.toysPressFeedback
 
 /**
  * 模组页：已装模组（启用/停用、配置）、下载目录里的模组包、本地包检查与安装。
@@ -84,130 +101,158 @@ fun ModsScreen(
 
     // 首次加载（还没有任何数据）用骨架屏，避免一片空白让人以为没有模组。
     val showSkeleton = controller.scanning && controller.installed.isEmpty()
+    val configEditor = controller.configEditor
 
-    Column(modifier = modifier.fillMaxSize()) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            item { ToysPageHeading("模组管理", "管理已装模组，或从本地导入模组包。") }
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().toysPanel().padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "已装模组（${controller.installed.size}）",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            buildString {
-                                append("经 ${controller.scanMode.ifBlank { "…" }} 读取")
-                                controller.installedSdkVersion?.let { append(" · SDK ").append(it) }
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    OutlinedButton(onClick = controller::refresh, enabled = !controller.scanning) {
-                        Text(if (controller.scanning) "刷新中…" else "刷新")
-                    }
-                }
+    AnimatedContent(
+        targetState = configEditor,
+        transitionSpec = {
+            if (targetState != null) {
+                (slideInHorizontally(tween(ToysMotion.Enter)) { it / 5 } + fadeIn(tween(ToysMotion.Enter)))
+                    .togetherWith(slideOutHorizontally(tween(ToysMotion.Exit)) { -it / 6 } + fadeOut(tween(ToysMotion.Fast)))
+            } else {
+                (slideInHorizontally(tween(ToysMotion.Enter)) { -it / 6 } + fadeIn(tween(ToysMotion.Enter)))
+                    .togetherWith(slideOutHorizontally(tween(ToysMotion.Exit)) { it / 5 } + fadeOut(tween(ToysMotion.Fast)))
             }
-
-            if (controller.scanError != null) {
+        },
+        label = "mods-navigation",
+        modifier = modifier.fillMaxSize(),
+    ) { currentConfig ->
+        if (currentConfig != null) {
+            ModConfigScreen(
+                controller = controller,
+                state = currentConfig,
+                onDismiss = controller::closeConfig,
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                item { ToysPageHeading("模组管理", "管理已装模组，或从本地导入模组包。") }
                 item {
-                    MessageBanner(
-                        text = controller.scanError!!,
-                        container = MaterialTheme.colorScheme.errorContainer,
-                        content = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.animateContentSize(),
-                    )
-                }
-            }
-
-            if (!controller.allFilesAccess) {
-                item { StorageAccessCard(controller) }
-            }
-
-            item {
-                AnimatedVisibility(
-                    visible = controller.message != null,
-                    enter = fadeIn() + slideInVertically { -it / 2 },
-                    exit = fadeOut() + slideOutVertically { -it / 2 },
-                ) {
-                    Column {
-                        MessageBanner(
-                            text = controller.message.orEmpty(),
-                            container = MaterialTheme.colorScheme.secondaryContainer,
-                            content = MaterialTheme.colorScheme.onSecondaryContainer,
-                        )
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                    ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            TextButton(onClick = controller::clearMessage) { Text("知道了") }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "已装模组（${controller.installed.size}）",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    buildString {
+                                        append("经 ${controller.scanMode.ifBlank { "…" }} 读取")
+                                        controller.installedSdkVersion?.let { append(" · SDK ").append(it) }
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = controller::refresh,
+                                enabled = !controller.scanning,
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                                modifier = Modifier.height(34.dp),
+                            ) {
+                                Text(if (controller.scanning) "刷新中…" else "刷新", style = MaterialTheme.typography.labelMedium)
+                            }
                         }
                     }
                 }
-            }
 
-            item {
-                Button(modifier = Modifier.fillMaxWidth(), onClick = { pickZip.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }) {
-                    Text("从文件安装模组包")
+                if (controller.scanError != null) {
+                    item {
+                        MessageBanner(
+                            text = controller.scanError!!,
+                            container = MaterialTheme.colorScheme.errorContainer,
+                            content = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.animateContentSize(),
+                        )
+                    }
                 }
-            }
 
-            val issues = controller.issues
-            if (issues.isNotEmpty()) {
+                if (!controller.allFilesAccess) {
+                    item { StorageAccessCard(controller) }
+                }
+
                 item {
-                    Text(
-                        "发现 ${issues.size} 个问题",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    AnimatedVisibility(
+                        visible = controller.message != null,
+                        enter = fadeIn() + slideInVertically { -it / 2 },
+                        exit = fadeOut() + slideOutVertically { -it / 2 },
+                    ) {
+                        Column {
+                            MessageBanner(
+                                text = controller.message.orEmpty(),
+                                container = MaterialTheme.colorScheme.secondaryContainer,
+                                content = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                            ) {
+                                TextButton(onClick = controller::clearMessage) { Text("知道了") }
+                            }
+                        }
+                    }
                 }
-                items(issues.size) { index -> IssueCard(issues[index]) }
-            }
 
-            if (showSkeleton) {
-                item { SkeletonList(count = 5) }
-            } else if (controller.installed.isEmpty()) {
-                item { EmptyHint("还没有模组。去市场装一个，或用上面的「从文件安装模组包」。") }
-            } else {
-                items(controller.installed, key = { it.name.lowercase() }) { entry ->
-                    InstalledModCard(
-                        entry = entry,
-                        busy = controller.busyModId == entry.name,
-                        onToggle = { enabled -> controller.setEnabled(entry, enabled) },
-                        onConfig = { controller.openConfig(entry) },
-                        modifier = Modifier.animateItem(),
-                    )
+                item {
+                    Button(
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        onClick = { pickZip.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_extension),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("从本地文件安装模组包", style = MaterialTheme.typography.titleSmall)
+                    }
                 }
-            }
 
-            item {
-                Spacer(Modifier.height(8.dp))
-                SectionHeader(
-                    title = "下载的模组包（${controller.packages.size}）",
-                    subtitle = controller.downloadsPath,
-                )
-            }
-            if (controller.packages.isEmpty()) {
-                item { EmptyHint("还没有下载的模组包。去市场点「下载并安装」就会出现在这里。") }
-            }
-            items(controller.packages.size) { index ->
-                val packageFile = controller.packages[index]
-                PackageCard(
-                    packageFile = packageFile,
-                    busy = controller.checking,
-                    onCheck = { controller.checkPackage(packageFile.file) },
-                    onDelete = { controller.deletePackage(packageFile.file) },
-                )
+                val issues = controller.issues
+                if (issues.isNotEmpty()) {
+                    item {
+                        Text(
+                            "发现 ${issues.size} 个问题",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    items(issues.size) { index -> IssueCard(issues[index]) }
+                }
+
+                if (showSkeleton) {
+                    item { SkeletonList(count = 5) }
+                } else if (controller.installed.isEmpty()) {
+                    item { EmptyHint("还没有模组。去市场装一个，或用上面的「从文件安装模组包」。") }
+                } else {
+                    items(controller.installed, key = { it.name.lowercase() }) { entry ->
+                        InstalledModCard(
+                            entry = entry,
+                            busy = controller.busyModId == entry.name,
+                            onToggle = { enabled -> controller.setEnabled(entry, enabled) },
+                            onConfig = { controller.openConfig(entry) },
+                            modifier = Modifier.animateItem(),
+                        )
+                    }
+                }
             }
         }
     }
@@ -261,15 +306,6 @@ fun ModsScreen(
             }
         }
     }
-
-    val config = controller.configEditor
-    if (config != null) {
-        ModConfigSheet(
-            controller = controller,
-            state = config,
-            onDismiss = controller::closeConfig,
-        )
-    }
 }
 
 /** 没有「所有文件访问权限」时的提示：加载器目录在游戏私有目录里，读写必须经 Shizuku。 */
@@ -299,23 +335,6 @@ private fun StorageAccessCard(controller: ModsController) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = controller::requestStorageAccess) { Text("去授权") }
             OutlinedButton(onClick = controller::refreshAccess) { Text("已授权，重新检测") }
-        }
-    }
-}
-
-@Composable
-private fun SectionHeader(title: String, subtitle: String? = null) {
-    Column {
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        if (!subtitle.isNullOrBlank()) {
-            Spacer(Modifier.height(2.dp))
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
     }
 }
@@ -363,116 +382,174 @@ private fun InstalledModCard(
     onConfig: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
+    val scheme = MaterialTheme.colorScheme
+    val interactions = remember { MutableInteractionSource() }
+
+    Surface(
         modifier = modifier
             .fillMaxWidth()
-            .toysPanel(12)
-            .padding(12.dp)
-            .animateContentSize(),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                entry.shownName,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
+            .clip(RoundedCornerShape(18.dp))
+            .toysPressFeedback(interactions)
+            .clickable(
+                interactionSource = interactions,
+                indication = androidx.compose.foundation.LocalIndication.current,
+                onClick = onConfig,
             )
-            AnimatedVisibility(visible = !entry.enabled) {
-                Row {
-                    Pill("停用", MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.width(6.dp))
+            .animateContentSize(),
+        shape = RoundedCornerShape(18.dp),
+        color = scheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.5f)),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            // 顶栏：模组主标题与副信息 + 启用开关
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = entry.shownName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = buildString {
+                            append(entry.id.ifBlank { entry.name })
+                            if (entry.author.isNotBlank()) append(" · ").append(entry.author)
+                            append(" · ").append(Formats.bytes(entry.sizeBytes))
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (busy) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    }
+                    Switch(
+                        checked = entry.enabled,
+                        onCheckedChange = onToggle,
+                    )
                 }
             }
-            Pill("v${entry.version.ifBlank { "?" }}")
-            Spacer(Modifier.width(8.dp))
-            // 正在切换时只加一个小转圈，不把开关置灰：置灰的开关既分不清「在忙」还是「不可用」，
-            // 也会让配色看起来像状态出错。重复点由控制器挡掉。
-            if (busy) {
-                CircularProgressIndicator(modifier = Modifier.height(18.dp).width(18.dp), strokeWidth = 2.dp)
-                Spacer(Modifier.width(8.dp))
+
+            // 标签栏：版本、状态（启用/停用）、平台（仅 Android / 仅 Windows）、要求 SDK
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Pill(
+                    text = "v${entry.version.ifBlank { "?" }}",
+                    container = scheme.secondaryContainer.copy(alpha = 0.8f),
+                    content = scheme.onSecondaryContainer,
+                )
+                if (entry.enabled) {
+                    Pill(
+                        text = "已启用",
+                        container = scheme.primaryContainer.copy(alpha = 0.6f),
+                        content = scheme.onPrimaryContainer,
+                    )
+                } else {
+                    Pill(
+                        text = "已停用",
+                        container = scheme.surfaceVariant,
+                        content = scheme.onSurfaceVariant,
+                    )
+                }
+                entry.platformBadge?.let { badge ->
+                    Pill(
+                        text = badge,
+                        container = scheme.tertiaryContainer.copy(alpha = 0.8f),
+                        content = scheme.onTertiaryContainer,
+                    )
+                }
+                if (entry.sdkVersion.isNotBlank()) {
+                    Pill(
+                        text = "SDK ${entry.sdkVersion}",
+                        container = scheme.surfaceVariant.copy(alpha = 0.7f),
+                        content = scheme.onSurfaceVariant,
+                    )
+                }
             }
-            Switch(checked = entry.enabled, onCheckedChange = onToggle)
-        }
-        Spacer(Modifier.height(4.dp))
-        Text(
-            buildString {
-                append(entry.id.ifBlank { entry.name })
-                if (entry.author.isNotBlank()) append(" · ").append(entry.author)
-                append(" · ").append(Formats.bytes(entry.sizeBytes))
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (entry.sdkVersion.isNotBlank() || entry.platformBadge != null) {
-            Spacer(Modifier.height(2.dp))
-            Text(
-                listOfNotNull(
-                    entry.sdkVersion.takeIf { it.isNotBlank() }?.let { "要求 SDK $it" },
-                    entry.platformBadge,
-                ).joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        if (entry.dependencies.isNotEmpty()) {
-            Spacer(Modifier.height(2.dp))
-            Text(
-                "依赖：" + entry.dependencies.joinToString("、") {
-                    if (it.minVersion.isBlank()) it.id else "${it.id} ≥ ${it.minVersion}"
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        if (entry.description.isNotBlank()) {
-            Spacer(Modifier.height(4.dp))
-            Text(
-                entry.description,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        TextButton(onClick = onConfig, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
-            Text("设置")
+
+            // 说明文案（若有）
+            if (entry.description.isNotBlank()) {
+                Text(
+                    text = entry.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurface.copy(alpha = 0.85f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(scheme.surfaceVariant.copy(alpha = 0.35f))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+            }
+
+            // 底部辅助信息与操作区
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                if (entry.dependencies.isNotEmpty()) {
+                    Text(
+                        text = "依赖：" + entry.dependencies.joinToString("、") {
+                            if (it.minVersion.isBlank()) it.id else "${it.id} ≥ ${it.minVersion}"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                } else {
+                    Spacer(Modifier.weight(1f))
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                OutlinedButton(
+                    onClick = onConfig,
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    modifier = Modifier.height(32.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_nav_settings),
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = scheme.primary,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "配置",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
         }
     }
 }
 
-@Composable
-private fun PackageCard(
-    packageFile: DownloadedPackage,
-    busy: Boolean,
-    onCheck: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .toysPanel(12)
-            .padding(12.dp),
-    ) {
-        Text(
-            packageFile.name,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            "${Formats.bytes(packageFile.sizeBytes)} · ${Formats.dateTime(packageFile.modifiedEpochMs)}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = onCheck, enabled = !busy) { Text("检查") }
-            OutlinedButton(onClick = onDelete, enabled = !busy) { Text("删除") }
-        }
-    }
-}
+
