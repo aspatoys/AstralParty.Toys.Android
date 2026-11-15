@@ -138,4 +138,44 @@ class InstalledModsTest {
         assertTrue(issues.any { it.message.contains("同一个 id") })
         assertFalse(issues.isEmpty())
     }
+
+    @Test
+    fun `sidecar platforms are normalized and only windows gets an info issue`() {
+        for (name in listOf("BothMod", "WinMod")) {
+            File(layout.modsRoot, name).mkdirs()
+            File(layout.modsRoot, "$name/$name.dll").writeBytes(byteArrayOf(1))
+        }
+        File(layout.modsRoot, "BothMod/BothMod.json").writeText(
+            """{"id":"BothMod","version":"1.0.0","platforms":["android","windows"]}""",
+        )
+        File(layout.modsRoot, "WinMod/WinMod.json").writeText(
+            """{"id":"WinMod","version":"1.0.0","platforms":["WINDOWS"]}""",
+        )
+
+        val entries = InstalledMods.scan(layout)
+        val both = entries.first { it.name == "BothMod" }
+        val win = entries.first { it.name == "WinMod" }
+
+        assertEquals(listOf("windows", "android"), both.platforms)
+        assertEquals(null, both.platformBadge)
+        assertEquals(listOf("windows"), win.platforms)
+        assertEquals("仅 Windows", win.platformBadge)
+
+        val issues = InstalledMods.diagnose(entries, installedSdkVersion = "3.8.1")
+        assertTrue(issues.any { it.modName == "WinMod" && it.level == ModIssue.Level.INFO })
+        assertFalse(issues.any { it.modName == "BothMod" && it.message.contains("Windows") })
+    }
+
+    @Test
+    fun `missing platforms field means both platforms`() {
+        val folder = File(layout.modsRoot, "PlainMod").apply { mkdirs() }
+        File(folder, "PlainMod.dll").writeBytes(byteArrayOf(1))
+        File(folder, "PlainMod.json").writeText("""{"id":"PlainMod","version":"1.0.0"}""")
+
+        val entry = InstalledMods.scan(layout).single()
+
+        assertTrue(entry.platforms.isEmpty())
+        assertEquals(null, entry.platformBadge)
+        assertTrue(ModPlatforms.supportsAndroid(entry.platforms))
+    }
 }

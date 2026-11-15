@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../CesiumOverlayMod/CesiumOverlayMod.csproj" />
+    <Reference Include="CesiumLoader.SDK"><HintPath>$(CesiumSdkDll)</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

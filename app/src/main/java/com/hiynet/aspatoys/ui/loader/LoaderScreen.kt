@@ -7,6 +7,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import com.hiynet.aspatoys.ui.theme.ToysPageHeading
+import com.hiynet.aspatoys.ui.theme.ToysSection
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,13 +21,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import com.hiynet.aspatoys.ui.theme.toysPanel
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -107,29 +109,72 @@ fun LoaderScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("加载器", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        ToysPageHeading("加载器", "授权访问后，安装或管理游戏加载器。")
 
-        PrivilegeModeCard(
-            mode = mode,
-            onModeChanged = { next ->
-                mode = next
-                onModeChanged(next)
-            },
-        )
+        ToysSection("访问权限") {
+            PrivilegeModeCard(
+                mode = mode,
+                onModeChanged = { next ->
+                    mode = next
+                    onModeChanged(next)
+                },
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                if (ShizukuShell.selectedMode() == AppSettings.PrivilegeRoot) {
+                    OutlinedButton(
+                        onClick = {
+                            RootShell.reset()
+                            refresh()
+                        },
+                        enabled = !busy,
+                    ) { Text("重新检测 Root") }
+                } else {
+                    OutlinedButton(onClick = { ShizukuShell.requestPermission() }, enabled = !busy) {
+                        Text("授权 Shizuku")
+                    }
+                }
+                OutlinedButton(onClick = { refresh() }, enabled = !busy) { Text("刷新") }
+            }
+        }
 
-        WorkspaceCard(mods = mods, onOpenSettings = onOpenSettings)
+        ToysSection("安装与还原") {
+                Text("安装前请完全退出游戏。还原后将恢复原版资源。", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { run("安装") { log -> installer.install(log) } },
+                    enabled = !busy && (status?.shizukuGranted == true),
+                ) { Text("安装加载器") }
+                OutlinedButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { run("还原") { log -> installer.restore(log) } },
+                    enabled = !busy && (status?.hasBackup == true),
+                ) { Text("还原原包") }
+            }
 
-        Card {
+            AnimatedVisibility(
+                visible = busy,
+                enter = fadeIn() + slideInVertically { -it / 3 },
+                exit = fadeOut(),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator(modifier = Modifier.padding(4.dp))
+                    Text("执行中…", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+
+        ToysSection("运行状态") {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(0.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text("注入状态", style = MaterialTheme.typography.titleSmall)
                 val current = status
                 if (current == null) {
                     // 第一次读状态要跑几条 shell 命令，先铺骨架，别让这一块空着。
@@ -148,9 +193,9 @@ fun LoaderScreen(
                     )
                     StatusLine("缓存包", current.bundlePath ?: "未找到")
                     StatusLine("缓存包指纹", current.bundleSha256?.take(16) ?: "—")
-                    StatusLine("加载器", if (current.injected) "已注入" else "原版")
+                    StatusLine("缓存状态", current.cacheState)
                     StatusLine("载荷", if (current.loaderPayload) "已就位" else "缺失")
-                    StatusLine("本地备份", if (current.hasBackup) "有" else "无")
+                    StatusLine("原包恢复", if (current.hasBackup) "已校验原包可用" else "无可用恢复来源")
                     if (current.note.isNotBlank()) {
                         Spacer(Modifier.height(2.dp))
                         Text(
@@ -173,43 +218,19 @@ fun LoaderScreen(
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            if (ShizukuShell.selectedMode() == AppSettings.PrivilegeRoot) {
-                OutlinedButton(
-                    onClick = {
-                        RootShell.reset()
-                        refresh()
-                    },
-                    enabled = !busy,
-                ) { Text("重新检测 Root") }
-            } else {
-                OutlinedButton(onClick = { ShizukuShell.requestPermission() }, enabled = !busy) {
-                    Text("授权 Shizuku")
-                }
-            }
-            OutlinedButton(onClick = { refresh() }, enabled = !busy) { Text("刷新") }
-        }
+        WorkspaceCard(mods = mods, onOpenSettings = onOpenSettings)
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            Button(
-                onClick = { run("安装") { log -> installer.install(log) } },
-                enabled = !busy && (status?.shizukuGranted == true),
-            ) { Text("安装加载器") }
+        Column(Modifier.fillMaxWidth().toysPanel().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("内置悬浮窗", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(
+                "游戏内头像入口，提供模组操作与变速控制。每次启动为 1 倍，仅通过悬浮窗变速。窗口跟随设置中的主题；无需系统悬浮窗权限。更新后请完全重启游戏。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             OutlinedButton(
-                onClick = { run("还原") { log -> installer.restore(log) } },
-                enabled = !busy && (status?.hasBackup == true),
-            ) { Text("还原原包") }
-        }
-
-        AnimatedVisibility(
-            visible = busy,
-            enter = fadeIn() + slideInVertically { -it / 3 },
-            exit = fadeOut(),
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CircularProgressIndicator(modifier = Modifier.padding(4.dp))
-                Text("执行中…", style = MaterialTheme.typography.bodySmall)
-            }
+                onClick = { run("安装 / 更新悬浮窗") { log -> installer.installOverlay(log) } },
+                enabled = !busy && (status?.shizukuGranted == true),
+            ) { Text("安装 / 更新悬浮窗") }
         }
 
         AnimatedVisibility(visible = logs.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
@@ -242,12 +263,10 @@ private fun PrivilegeModeCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(14.dp),
+            .padding(0.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("提权方式", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        Text("提权方式", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(
                 selected = !rootMode,
@@ -282,8 +301,7 @@ private fun WorkspaceCard(mods: ModsController, onOpenSettings: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .toysPanel(20)
             .padding(14.dp),
     ) {
         Text("加载器目录", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)

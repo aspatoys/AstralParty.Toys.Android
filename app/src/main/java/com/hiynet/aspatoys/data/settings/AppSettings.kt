@@ -1,6 +1,7 @@
 package com.hiynet.aspatoys.data.settings
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.os.Environment
 import com.hiynet.aspatoys.data.market.MarketClient
 import java.io.File
@@ -23,6 +24,33 @@ import java.util.Locale
 class AppSettings(context: Context) {
     private val app = context.applicationContext
     private val prefs = app.getSharedPreferences("aspatoys", Context.MODE_PRIVATE)
+
+    /** Appearance only; changing this does not invalidate the market or loader state. */
+    var themeMode: ThemeMode
+        get() = ThemeMode.fromPreference(prefs.getString(KeyThemeMode, null))
+        set(value) { prefs.edit().putString(KeyThemeMode, value.preferenceValue).apply() }
+
+    /** Empty selects the bundled backdrop. Only app-private imported filenames are stored. */
+    var backgroundImage: String
+        get() = prefs.getString(KeyBackgroundImage, "") ?: ""
+        set(value) { prefs.edit().putString(KeyBackgroundImage, value).apply() }
+
+    fun observeBackgroundImage(onChanged: (String) -> Unit): () -> Unit {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == null || key == KeyBackgroundImage) onChanged(backgroundImage)
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        return { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
+    /** Returns a cleanup function so each UI observer unregisters with its composition. */
+    fun observeThemeMode(onChanged: (ThemeMode) -> Unit): () -> Unit {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == null || key == KeyThemeMode) onChanged(themeMode)
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        return { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
 
     /** 市场地址；永远是规范化后的合法地址。 */
     var marketBaseUrl: String
@@ -132,6 +160,8 @@ class AppSettings(context: Context) {
         private const val KeyMarketBaseUrl = "market.baseUrl"
         private const val KeyConsentVersion = "market.consentVersion"
         private const val KeyLanguage = "ui.language"
+        private const val KeyThemeMode = "ui.theme"
+        private const val KeyBackgroundImage = "ui.background"
         private const val KeyPrivilegeMode = "privilege.mode"
         private const val KeyLoaderRoot = "paths.loaderRoot"
         private const val KeyDownloads = "paths.downloads"

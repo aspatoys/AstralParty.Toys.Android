@@ -3,6 +3,7 @@ package com.hiynet.aspatoys.data.mods
 import com.hiynet.aspatoys.core.booleanOrDefault
 import com.hiynet.aspatoys.core.parseJsonObjectOrNull
 import com.hiynet.aspatoys.core.string
+import com.hiynet.aspatoys.core.stringArray
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
@@ -64,6 +65,7 @@ class ModPackageInspector(private val layout: ModLayout) {
                 installedSdkVersion = installedSdk ?: "",
                 sdkBlocked = SdkVersions.isIncompatible(plan.packageSdkVersion, installedSdk),
                 dllLooksManaged = plan.dllLooksManaged,
+                platforms = plan.packagePlatforms,
             )
         }
 
@@ -248,6 +250,7 @@ class ModPackageInspector(private val layout: ModLayout) {
                 val root = parseJsonObjectOrNull(sidecarText)
                 plan.packageVersion = root?.string("version") ?: ""
                 plan.packageSdkVersion = root?.string("sdkVersion") ?: ""
+                plan.packagePlatforms = ModPlatforms.normalize(root?.stringArray("platforms") ?: emptyList())
                 plan.packageDisplayName = root?.string("name") ?: ""
             }
             plan.isDowngrade = plan.installedVersion.isNotEmpty() && plan.packageVersion.isNotEmpty() &&

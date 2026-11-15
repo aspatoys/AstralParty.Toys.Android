@@ -1,8 +1,10 @@
 package com.hiynet.aspatoys.ui.market
 
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -62,6 +64,9 @@ import com.hiynet.aspatoys.ui.components.Pill
 import com.hiynet.aspatoys.ui.components.SkeletonDetail
 import com.hiynet.aspatoys.ui.components.SkeletonList
 import com.hiynet.aspatoys.ui.format.Formats
+import com.hiynet.aspatoys.ui.theme.ToysPageHeading
+import com.hiynet.aspatoys.ui.theme.toysPanel
+import com.hiynet.aspatoys.ui.theme.toysPressFeedback
 
 /**
  * 市场页：搜索 / 排序 / 标签筛选 → 目录 → 详情 → 下载并安装。
@@ -89,6 +94,7 @@ fun MarketScreen(
         val detailOpen = detail != null || controller.detailLoading || controller.detailError != null
 
         Column(modifier = Modifier.fillMaxSize()) {
+            ToysPageHeading("模组市场", "发现模组，查看详情并下载安装。", Modifier.padding(horizontal = 20.dp))
             MarketSearchBar(controller)
             MarketFilters(controller)
 
@@ -395,12 +401,13 @@ private fun MarketRow(
     modifier: Modifier = Modifier,
 ) {
     val summary = item.summary
+    val interactions = remember { MutableInteractionSource() }
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .clickable(onClick = onOpen)
+            .toysPressFeedback(interactions)
+            .toysPanel(14)
+            .clickable(interactionSource = interactions, indication = LocalIndication.current, onClick = onOpen)
             .padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -579,8 +586,7 @@ private fun VersionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .toysPanel(10)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -597,6 +603,7 @@ private fun VersionRow(
                 buildString {
                     if (version.sizeBytes > 0) append(Formats.bytes(version.sizeBytes)).append(" · ")
                     append("SDK ").append(version.sdkVersion.ifBlank { "未声明" })
+                    version.platformBadge?.let { append(" · ").append(it) }
                     if (!version.hosted) append(" · 作者直链")
                     if (version.publishedAt.isNotBlank()) append(" · ").append(Formats.dateTime(version.publishedAt))
                 },

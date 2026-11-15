@@ -104,6 +104,7 @@ class MarketClient(private val userAgent: String) {
                     publishedAt = version.string("publishedAt"),
                     verifiedAt = version.string("verifiedAt"),
                     downloads = version.long("downloads"),
+                    platforms = com.hiynet.aspatoys.data.mods.ModPlatforms.normalize(version.stringArray("platforms")),
                 )
             },
         )
@@ -255,6 +256,7 @@ class MarketClient(private val userAgent: String) {
         downloads7Days = root.long("downloads7Days"),
         downloads30Days = root.long("downloads30Days"),
         featured = root.boolean("featured"),
+        platforms = com.hiynet.aspatoys.data.mods.ModPlatforms.normalize(root.stringArray("platforms")),
     )
 
     companion object {

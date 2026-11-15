@@ -81,6 +81,7 @@ object InstalledMods {
             disabledFolder = disabled,
             permissions = metadata.permissions,
             dependencies = metadata.dependencies,
+            platforms = metadata.platforms,
         )
     }
 
@@ -144,6 +145,7 @@ object InstalledMods {
             disabledFolder = disabled,
             permissions = metadata.permissions,
             dependencies = metadata.dependencies,
+            platforms = metadata.platforms,
         )
     }
 
@@ -171,6 +173,13 @@ object InstalledMods {
                     name,
                     ModIssue.Level.ERROR,
                     "要求 SDK ${entry.sdkVersion}，当前加载器是 ${installedSdkVersion ?: "未知"}；加载器会跳过这个模组。",
+                )
+            }
+            if (!ModPlatforms.supportsAndroid(entry.platforms)) {
+                issues += ModIssue(
+                    name,
+                    ModIssue.Level.INFO,
+                    "声明只支持 Windows；安卓引导照常加载，但部分功能可能不可用。",
                 )
             }
             if (entry.id.isEmpty() || entry.version.isEmpty()) {

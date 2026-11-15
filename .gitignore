@@ -28,3 +28,7 @@ captures/
 *.apk
 *.aab
 *.ap_
+
+# 内置悬浮窗的托管构建产物。
+/mods/**/bin/
+/mods/**/obj/

@@ -2,6 +2,9 @@ package com.hiynet.aspatoys.ui.components
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import com.hiynet.aspatoys.ui.theme.ToysMotion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,20 +53,23 @@ fun CoverThumb(
         modifier = modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
-        val image = bitmap
-        if (image != null) {
-            Image(
-                bitmap = image.asImageBitmap(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.size(64.dp),
-            )
-        } else {
-            Text(
-                text = fallback.take(1).ifBlank { "?" },
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Crossfade(targetState = bitmap, animationSpec = tween(ToysMotion.Enter), label = "cover-loaded") { image ->
+            Box(contentAlignment = Alignment.Center) {
+                if (image != null) {
+                    Image(
+                        bitmap = image.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(64.dp),
+                    )
+                } else {
+                    Text(
+                        text = fallback.take(1).ifBlank { "?" },
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
     }
 }

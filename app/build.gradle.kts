@@ -1,4 +1,5 @@
 import java.util.zip.ZipFile
+import java.security.MessageDigest
 
 plugins {
     alias(libs.plugins.android.application)
@@ -12,8 +13,8 @@ android {
     }
 
     // 版本号由 CI 传入（tag 发布时取 tag 名），本地构建用默认值。
-    val appVersionName = (project.findProperty("appVersionName") as String?)?.takeIf { it.isNotBlank() } ?: "1.0"
-    val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 1
+    val appVersionName = (project.findProperty("appVersionName") as String?)?.takeIf { it.isNotBlank() } ?: "1.1.2"
+    val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 10102
 
     defaultConfig {
         applicationId = "com.hiynet.aspatoys"
@@ -155,6 +156,29 @@ val syncLoaderAssets = tasks.register("syncLoaderAssets") {
             }
         } else {
             logger.warn("没有指定发行版 zip（-PcesiumReleaseZip），跳过内置模组同步")
+        }
+
+        // 构建发行版模组之后再合入安卓悬浮窗，避免发行版同步重建 mods 时将它删除。
+        val overlayAssets = File(repoRootDir, "build/builtin-overlay/assets")
+        if (overlayAssets.isDirectory) {
+            overlayAssets.copyRecursively(assetsCesium, overwrite = true)
+        }
+        require(File(assetsCesium, "CesiumAndroidApi.dll").isFile &&
+            File(assetsCesium, "mods/CesiumOverlayMod/CesiumOverlayMod.dll").isFile &&
+            File(assetsCesium, "mods/SpeedHackMod/SpeedHackMod.dll").isFile &&
+            File(assetsCesium, "mods/SpeedHackMod/SpeedHackMod.json").takeIf { it.isFile }
+                ?.readText()?.contains("2.5.5-android-panel") == true &&
+            File(assetsCesium, "mods/FreeCameraMod/FreeCameraMod.dll").isFile &&
+            File(assetsCesium, "mods/FreeCameraMod/FreeCameraMod.json").takeIf { it.isFile }
+                ?.readText()?.contains("2.7.2-android-pinch") == true) {
+            "缺少内置悬浮窗：先运行 python mods/build.py --refs <游戏引用程序集目录>（详见 mods/README.md）"
+        }
+        val recovery = File(assetsCesium, "recovery/original.bundle")
+        require(recovery.isFile) { "缺少离线恢复原包：先运行 python installer/prepare-recovery.py --bundle <原版__data>" }
+        val recoveryHash = MessageDigest.getInstance("SHA-256").digest(recovery.readBytes())
+            .joinToString("") { "%02x".format(it) }
+        require(recoveryHash == "77da946bf7d331351a93ff16707aab426f534b7577a771f21267478b7bc70c87") {
+            "离线恢复原包指纹不符，拒绝打包"
         }
     }
 }
