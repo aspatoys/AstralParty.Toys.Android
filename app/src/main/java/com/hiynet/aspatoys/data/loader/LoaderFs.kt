@@ -1,5 +1,6 @@
 package com.hiynet.aspatoys.data.loader
 
+import com.hiynet.aspatoys.installer.LoaderOwnership
 import com.hiynet.aspatoys.installer.ShizukuShell
 
 /**
@@ -42,7 +43,9 @@ interface LoaderFs {
 }
 
 /** 经 Shizuku 执行 shell 的实现；所有路径都按单引号字面量转义。 */
-class ShizukuLoaderFs : LoaderFs {
+class ShizukuLoaderFs(
+    private val owner: LoaderOwnership = LoaderOwnership.default,
+) : LoaderFs {
 
     override fun isAvailable(): Boolean = ShizukuShell.isServiceAlive() && ShizukuShell.hasPermission()
 
@@ -77,6 +80,8 @@ class ShizukuLoaderFs : LoaderFs {
 
     override fun makeDirectories(path: String) {
         ShizukuShell.exec("mkdir -p " + q(path))
+        // root 建的目录属主是 root，游戏连遍历都不行；建完立刻改回游戏 uid。
+        owner.adopt(path)
     }
 
     /** 文件字节数；读不到时返回 0（不猜）。 */
@@ -92,8 +97,12 @@ class ShizukuLoaderFs : LoaderFs {
      * 先写 `<path>.cesium-tmp` 再 `mv` 覆盖目标。
      *
      * `cat > path` 会**先创建/截断目标**再开始读输入，中途失败就留下一个 0 字节的假文件 ——
-     * 模组 DLL 变成 0 字节后加载器照样会去加载它，然后每局报一次错。中转名件带 `.cesium-tmp`
+     * 模组 DLL 变成 0 字节后加载器照样会去加载它，然后每局报一次错。中转文件名带 `.cesium-tmp`
      * 后缀，不会和真实文件重名，失败时也不会污染目标。
+     *
+     * 代价是 `mv -f` 换成新 inode，属主变成执行者（Root 模式下就是 root），游戏就读不到了，
+     * 所以写完之后要把属主改回游戏。通道改不了属主时（Shizuku 是 shell(2000)）
+     * [LoaderOwnership.adopt] 自己会跳过 —— 那条通道的行为与 1.1.2 一致，本次不动。
      */
     private fun writeAtomic(remotePath: String, source: java.io.InputStream) {
         val temp = "$remotePath.cesium-tmp"
@@ -104,6 +113,9 @@ class ShizukuLoaderFs : LoaderFs {
             runCatching { ShizukuShell.exec("rm -f " + q(temp)) }
             throw error
         }
+        // `mv -f` 换成了新 inode，属主变成执行者（Root 模式下就是 root），游戏就读不到了。
+        // Root 通道下把属主改回游戏；Shizuku 通道不动（[LoaderOwnership.adopt] 自己会跳过）。
+        owner.adopt(remotePath)
     }
 
     override var lastError: String? = null

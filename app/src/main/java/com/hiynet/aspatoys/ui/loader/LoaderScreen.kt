@@ -196,6 +196,14 @@ fun LoaderScreen(
                     StatusLine("缓存状态", current.cacheState)
                     StatusLine("载荷", if (current.loaderPayload) "已就位" else "缺失")
                     StatusLine("原包恢复", if (current.hasBackup) "已校验原包可用" else "无可用恢复来源")
+                    current.ownershipWarning?.let { warning ->
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            warning,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                     if (current.note.isNotBlank()) {
                         Spacer(Modifier.height(2.dp))
                         Text(
