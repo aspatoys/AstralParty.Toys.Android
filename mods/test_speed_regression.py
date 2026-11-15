@@ -17,15 +17,14 @@ work = project.parent                           # sibling checkouts live here
 parser = argparse.ArgumentParser()
 parser.add_argument('--tools', required=True, type=Path)
 parser.add_argument('--compile-only', action='store_true')
+parser.add_argument('--legacy', type=Path, help='Optional legacy SpeedHackMod source directory')
 args = parser.parse_args()
 
 tools = args.tools.resolve()
 out = project / 'build/harness-verification/speed-regression'
 out.mkdir(parents=True, exist_ok=True)
 
-legacy = work / 'cesium-android-publish-050/src/SpeedHackMod'
-if not legacy.is_dir():
-    legacy = Path(r'D:\Codex\2026-11-14\c-users-victus-appdata-local-programs\work\cesium-android-publish-050\src\SpeedHackMod')
+legacy = args.legacy or work / 'cesium-android-publish-050/src/SpeedHackMod'
 sources = [
     root / 'tests/speedregression/Stubs.cs',
     root / 'tests/speedregression/Legacy.cs',

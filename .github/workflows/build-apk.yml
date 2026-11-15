@@ -18,6 +18,8 @@ env:
   # 固定随包加载器版本：发行版不能因为上游又发了新版就悄悄换掉 SDK 与内置模组。
   # 要升级加载器时改这里（并单独验证一次），不要依赖"取最新"。
   LOADER_VERSION: "3.8.0"
+  # 1.1.2 起使用独立发行签名；后续版本必须沿用，避免意外换签。
+  RELEASE_CERT_SHA256: "7cdb0644cd2bc4370152643950dde7b8cbf99ba4f770e094e9ecb775ca392bcc"
 
 jobs:
   build:
@@ -204,7 +206,12 @@ jobs:
           set -euo pipefail
           sdk="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           apksigner="$(find "$sdk" -name apksigner -type f | sort | tail -n 1)"
-          "$apksigner" verify --print-certs "aspatoys-${{ steps.version.outputs.name }}.apk"
+          "$apksigner" verify --print-certs "aspatoys-${{ steps.version.outputs.name }}.apk" | tee "$RUNNER_TEMP/apk-certificate.txt"
+          actual="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-certificate.txt" | tr '[:upper:]' '[:lower:]')"
+          test "$actual" = "$RELEASE_CERT_SHA256" || {
+            echo "::error::APK 证书与 1.1.2 起固定使用的发行证书不一致，拒绝发布。"
+            exit 1
+          }
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
