@@ -1,5 +1,7 @@
 package com.hiynet.aspatoys.data.market
 
+import com.hiynet.aspatoys.data.mods.ModPlatforms
+
 /**
  * 市场（Forge）公共接口的返回模型，字段与 `https://forge.hiynet.com/api/mods` 一一对应。
  * 这些类只描述「服务端给了什么」，是否已装、是否内置由 [MarketCatalog] 在客户端补。
@@ -31,7 +33,11 @@ data class MarketModSummary(
     val downloads7Days: Long = 0,
     val downloads30Days: Long = 0,
     val featured: Boolean = false,
-)
+    /** 版本声明的支持平台；空 = 没声明（按双平台处理）。 */
+    val platforms: List<String> = emptyList(),
+) {
+    val platformBadge: String? get() = ModPlatforms.badge(platforms)
+}
 
 data class MarketModDetail(
     val id: String = "",
@@ -68,7 +74,11 @@ data class MarketModVersion(
     val publishedAt: String = "",
     val verifiedAt: String = "",
     val downloads: Long = 0,
-)
+    /** 版本声明的支持平台；空 = 没声明（按双平台处理）。 */
+    val platforms: List<String> = emptyList(),
+) {
+    val platformBadge: String? get() = ModPlatforms.badge(platforms)
+}
 
 data class MarketDependency(
     val id: String = "",

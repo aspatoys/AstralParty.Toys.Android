@@ -405,10 +405,13 @@ private fun InstalledModCard(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        if (entry.sdkVersion.isNotBlank()) {
+        if (entry.sdkVersion.isNotBlank() || entry.platformBadge != null) {
             Spacer(Modifier.height(2.dp))
             Text(
-                "要求 SDK ${entry.sdkVersion}",
+                listOfNotNull(
+                    entry.sdkVersion.takeIf { it.isNotBlank() }?.let { "要求 SDK $it" },
+                    entry.platformBadge,
+                ).joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

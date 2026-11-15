@@ -597,6 +597,7 @@ private fun VersionRow(
                 buildString {
                     if (version.sizeBytes > 0) append(Formats.bytes(version.sizeBytes)).append(" · ")
                     append("SDK ").append(version.sdkVersion.ifBlank { "未声明" })
+                    version.platformBadge?.let { append(" · ").append(it) }
                     if (!version.hosted) append(" · 作者直链")
                     if (version.publishedAt.isNotBlank()) append(" · ").append(Formats.dateTime(version.publishedAt))
                 },

@@ -62,6 +62,13 @@ fun PackageReportContent(report: PackageCheckReport, modifier: Modifier = Modifi
                 if (report.sha256.equals(report.expectedSha256, ignoreCase = true)) "一致" else "不一致",
             )
         }
+        report.inspection?.windowsOnlyMods?.takeIf { it.isNotEmpty() }?.let { windowsOnly ->
+            InfoLine(
+                "平台提示",
+                "以下模组声明只支持 Windows，安卓上装了也会加载，但功能不一定可用：" +
+                    windowsOnly.joinToString("、") { it.name },
+            )
+        }
 
         val issues = report.issues
         if (issues.isNotEmpty()) {
@@ -175,6 +182,9 @@ private fun ModEntryCard(mod: InspectedMod) {
         InfoLine("模组 ID", mod.modId)
         InfoLine("版本", mod.versionText)
         InfoLine("要求 SDK", mod.sdkVersion.ifBlank { "未声明" })
+        val platformText = mod.platformBadge
+            ?: if (mod.platforms.isEmpty()) "未声明（按双平台处理）" else "Windows + Android"
+        InfoLine("支持平台", platformText)
         InfoLine("DLL 检查", if (mod.dllLooksManaged) "托管程序集" else "不是托管程序集")
         InfoLine("文件", "${mod.files.size} 个 / ${Formats.bytes(mod.totalBytes)}")
         if (mod.preservesConfig) InfoLine("玩家配置", "保留现有 config.json")

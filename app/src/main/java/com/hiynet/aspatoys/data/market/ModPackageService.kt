@@ -213,6 +213,12 @@ class ModPackageService(
                     "${mod.name} 要求 SDK ${mod.sdkVersion}，当前加载器是 ${mod.installedSdkVersion}；装上去会被加载器跳过。",
                 )
             }
+            if (mod.windowsOnly) {
+                issues += CheckIssue(
+                    CheckIssue.Level.INFO,
+                    "${mod.name} 声明只支持 Windows；安卓引导照常加载，但功能不一定可用。",
+                )
+            }
             if (mod.isDowngrade) {
                 issues += CheckIssue(
                     CheckIssue.Level.WARNING,

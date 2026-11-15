@@ -26,6 +26,38 @@ object ModPermissions {
     }
 }
 
+/**
+ * 模组支持的平台标记（sidecar 的 `platforms` 数组）。
+ *
+ * 取值只有 [WINDOWS] 与 [ANDROID]；两个都写就是双平台。没有声明（或只写了认不出的取值）
+ * 按双平台处理，旧模组与第三方模组不受影响。平台只用于界面标注：引导照常加载，
+ * 不会因为平台不匹配拒绝某个模组。
+ */
+object ModPlatforms {
+    const val WINDOWS = "windows"
+    const val ANDROID = "android"
+
+    /** 规范化平台列表：只保留已知取值、去重、Windows 在前（与 SDK 的 `ModPlatform.Normalize` 一致）。 */
+    fun normalize(platforms: List<String>): List<String> {
+        val lowered = platforms.map { it.trim().lowercase() }
+        return buildList {
+            if (WINDOWS in lowered) add(WINDOWS)
+            if (ANDROID in lowered) add(ANDROID)
+        }
+    }
+
+    /** 声明里是否包含安卓；没有声明按支持处理。 */
+    fun supportsAndroid(declared: List<String>): Boolean =
+        normalize(declared).let { it.isEmpty() || ANDROID in it }
+
+    /** 界面标注：只在单平台时给一个标签，双平台/未声明不给（免得每张卡都挂一句「都支持」）。 */
+    fun badge(declared: List<String>): String? = when (normalize(declared)) {
+        listOf(WINDOWS) -> "仅 Windows"
+        listOf(ANDROID) -> "仅 Android"
+        else -> null
+    }
+}
+
 /** 模组声明依赖的另一个模组。 */
 data class ModDependency(
     val id: String = "",
@@ -53,11 +85,16 @@ data class ModEntry(
     val disabledFolder: Boolean = false,
     val permissions: Int = ModPermissions.NONE,
     val dependencies: List<ModDependency> = emptyList(),
+    /** sidecar 声明的支持平台；空 = 没声明（按双平台处理）。只作界面标注。 */
+    val platforms: List<String> = emptyList(),
 ) {
     /** 界面显示名：sidecar 的 name 优先，其次 DLL 文件名。 */
     val shownName: String get() = displayName.ifBlank { name }
 
     val permissionLabels: List<String> get() = ModPermissions.labels(permissions)
+
+    /** 单平台模组的标签（「仅 Windows」/「仅 Android」）；双平台或未声明为 null。 */
+    val platformBadge: String? get() = ModPlatforms.badge(platforms)
 }
 
 /** 模组的 sidecar 元数据（`{ModId}.json`）；允许带注释。 */
@@ -72,6 +109,8 @@ data class ModSidecar(
     val enabled: Boolean? = null,
     val permissions: Int = 0,
     val dependencies: List<ModDependency> = emptyList(),
+    /** sidecar 的 `platforms` 数组；空 = 没声明（按双平台处理）。 */
+    val platforms: List<String> = emptyList(),
 ) {
     companion object {
         /** 解析 sidecar 文本；损坏时返回 null（调用方按「没有 sidecar」处理，不猜）。 */
@@ -92,6 +131,7 @@ data class ModSidecar(
                         minVersion = dependency.nullableString("minVersion") ?: "",
                     )
                 }.filter { it.id.isNotEmpty() },
+                platforms = ModPlatforms.normalize(root.stringArray("platforms")),
             )
         }
     }
@@ -119,6 +159,9 @@ data class ModPackageInspection(
     val hasDowngrade: Boolean get() = mods.any { it.isDowngrade }
 
     val hasSdkBlocked: Boolean get() = mods.any { it.sdkBlocked }
+
+    /** 包里声明为仅 Windows 的模组（只用于提示，不阻止导入）。 */
+    val windowsOnlyMods: List<InspectedMod> get() = mods.filter { it.windowsOnly }
 }
 
 /** 预检里单个模组的情况。 */
@@ -148,7 +191,15 @@ data class InspectedMod(
     val sdkBlocked: Boolean = false,
     /** 模组 DLL 看起来是托管程序集（PE + CLI 元数据），加载器才认。 */
     val dllLooksManaged: Boolean = false,
+    /** 包内 sidecar 声明的支持平台；空 = 没声明（按双平台处理）。 */
+    val platforms: List<String> = emptyList(),
 ) {
+    /** 单平台模组的标签（「仅 Windows」/「仅 Android」）；双平台或未声明为 null。 */
+    val platformBadge: String? get() = ModPlatforms.badge(platforms)
+
+    /** 声明为仅 Windows：安卓上装了也会加载，但功能不一定可用（只提示，不拦）。 */
+    val windowsOnly: Boolean get() = platformBadge == "仅 Windows"
+
     val versionText: String
         get() = when {
             packageVersion.isBlank() -> "版本未声明"
@@ -187,6 +238,7 @@ internal class PackageModPlan(
     var packageVersion: String = ""
     var packageDisplayName: String = ""
     var packageSdkVersion: String = ""
+    var packagePlatforms: List<String> = emptyList()
     var installedVersion: String = ""
     var installed: Boolean = false
     var isDowngrade: Boolean = false
