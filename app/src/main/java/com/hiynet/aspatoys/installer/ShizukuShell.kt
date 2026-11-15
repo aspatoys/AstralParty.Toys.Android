@@ -49,6 +49,8 @@ object ShizukuShell {
     /** 由 MainActivity 在启动时把持久化的选择灌进来。 */
     fun setMode(mode: String) {
         privilegeMode = if (mode == "root") "root" else "shizuku"
+        // 换通道等于换 uid：之前缓存的 uid/属主结论全部作废，下次写盘重新探测。
+        LoaderOwnership.default.reset()
         if (privilegeMode == "root") {
             RootShell.reset()
             Thread { RootShell.isAvailable() }.apply { isDaemon = true }.start()

@@ -78,6 +78,8 @@ class LoaderInstaller(
         val loaderPayload: Boolean = false,
         val note: String = "",
         val cacheState: String = "未检测",
+        /** 加载器文件属主有问题时的说明（游戏会读不到，表现为「装了但没模组」）。 */
+        val ownershipWarning: String? = null,
     )
 
     private val workDir: File
@@ -135,6 +137,10 @@ class LoaderInstaller(
                 LoaderBundleTransaction.State.ORIGINAL -> "原版"
                 LoaderBundleTransaction.State.INSTALLED -> "已安装"
                 LoaderBundleTransaction.State.UNKNOWN -> "未知版本"
+            },
+            ownershipWarning = runCatching { hasPayload() }.getOrDefault(false).let { ready ->
+                if (!ready) null
+                else LoaderOwnership.default.verify(listOf(BOOTSTRAP_REMOTE, "$LOADER_ROOT/sdk/CesiumLoader.SDK.dll"))
             },
         )
     }
@@ -211,6 +217,38 @@ class LoaderInstaller(
         deployBuiltInMods(log)
         installOverlayAt(LOADER_ROOT, log)
         writeInstalledIndex(log)
+        adoptOwnership(log)
+    }
+
+    /**
+     * 把整个加载器目录的属主交回游戏。
+     *
+     * 这一步不是「优化」而是**必需**：加载器目录是 `drwxr-s--- u0_a331 ext_data_rw`，
+     * 组没有写权限，而游戏进程的 groups 里根本没有 1078，所以属主不是游戏的
+     * 文件，游戏一律读不到。注入进 `AstralParty.Runtime.dll` 的 `<Module>.cctor`
+     * 会去 `File.ReadAllBytes(bootstrap)`，读失败被 try/catch 吞掉 —— 结果就是
+     * 「装好了、游戏能开、一个模组都不加载、日志也没有」。
+     *
+     * 顺带修掉旧版本（1.1.2/1.1.3）留下的 root 属主文件：它们是用
+     * `临时文件 + mv -f` 写出来的，属主变成了执行者。
+     */
+    private fun adoptOwnership(log: (String) -> Unit) {
+        val owner = LoaderOwnership.default
+        if (!owner.isSupported()) {
+            log(
+                "提示：当前提权通道 uid=${owner.channelUid() ?: "?"}，不能修改文件属主；" +
+                    "若加载器没生效，请用 root 或以 root 启动的 Shizuku",
+            )
+            return
+        }
+        owner.reset()
+        val adopted = owner.adoptTree(LOADER_ROOT)
+        if (!adopted) {
+            log("警告：加载器目录属主修正失败（${owner.lastError}）")
+            return
+        }
+        val problem = owner.verify(listOf(BOOTSTRAP_REMOTE, "$LOADER_ROOT/sdk/CesiumLoader.SDK.dll"))
+        log(problem?.let { "警告：$it" } ?: "加载器目录属主已交给游戏（${owner.ids()?.spec}）")
     }
 
     /**
