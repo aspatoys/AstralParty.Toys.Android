@@ -38,7 +38,7 @@ class MainActivity : ComponentActivity() {
     private fun updateSystemBars(darkTheme: Boolean) {
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { darkTheme },
-            navigationBarStyle = SystemBarStyle.auto(0xE6FFFFFF.toInt(), 0x80121420.toInt()) { darkTheme },
+            navigationBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { darkTheme },
         )
     }
 

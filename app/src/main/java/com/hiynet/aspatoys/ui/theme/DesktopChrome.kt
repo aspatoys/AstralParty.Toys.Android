@@ -65,35 +65,31 @@ fun ToysBackdrop(settings: AppSettings, modifier: Modifier = Modifier) {
     val customImage by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, imageName) {
         value = runCatching { images.load(imageName)?.asImageBitmap() }.getOrNull()
     }
-    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val base = MaterialTheme.colorScheme.background
+    val dark = base.luminance() < 0.5f
+
     Box(modifier = modifier.fillMaxSize().background(base)) {
-        val imageModifier = Modifier
-            .fillMaxSize()
-            .graphicsLayer { scaleX = 1.12f; scaleY = 1.12f }
-            .blur(24.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
         val imported = customImage
         if (imported != null && imageName.isNotEmpty()) {
+            val imageModifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { scaleX = 1.12f; scaleY = 1.12f }
+                .blur(24.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
             Image(
                 bitmap = imported,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = imageModifier,
             )
-        } else Image(
-            painter = painterResource(R.drawable.toys_backdrop),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = imageModifier,
-        )
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(
-                    if (dark) listOf(base.copy(alpha = 0.50f), base.copy(alpha = 0.72f), base.copy(alpha = 0.94f))
-                    else listOf(base.copy(alpha = 0.83f), base.copy(alpha = 0.90f), base.copy(alpha = 0.97f)),
+            Box(
+                Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(
+                        if (dark) listOf(base.copy(alpha = 0.50f), base.copy(alpha = 0.72f), base.copy(alpha = 0.94f))
+                        else listOf(base.copy(alpha = 0.83f), base.copy(alpha = 0.90f), base.copy(alpha = 0.97f)),
+                    ),
                 ),
-            ),
-        )
+            )
+        }
     }
 }
 

@@ -69,7 +69,6 @@ import com.hiynet.aspatoys.ui.mods.ModsController
 import com.hiynet.aspatoys.ui.mods.ModsScreen
 import com.hiynet.aspatoys.ui.settings.SettingsScreen
 import com.hiynet.aspatoys.ui.theme.ToysBackdrop
-import com.hiynet.aspatoys.ui.theme.ToysBrandHeader
 import com.hiynet.aspatoys.ui.theme.ToysMotion
 import com.hiynet.aspatoys.ui.theme.toysPressFeedback
 import com.hiynet.aspatoys.ui.theme.OverlayAppearanceSync
@@ -103,13 +102,11 @@ fun ToysApp() {
     CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
         Box(modifier = Modifier.fillMaxSize()) {
             ToysBackdrop(settings = container.settings)
-            Column(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-                ToysBrandHeader(page = destination.label)
-                Box(modifier = Modifier.weight(1f).fillMaxSize()) {
-                    val wide = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-                    if (wide) {
-                        Row(modifier = Modifier.fillMaxSize()) {
-                            NavigationRail(containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.94f)) {
+            Box(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                val wide = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+                if (wide) {
+                    Row(modifier = Modifier.fillMaxSize()) {
+                            NavigationRail(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.65f)) {
                                 Spacer(Modifier.height(12.dp))
                                 Destination.entries.forEach { item ->
                                     val interactions = remember { MutableInteractionSource() }
@@ -121,9 +118,9 @@ fun ToysApp() {
                                         modifier = Modifier.toysPressFeedback(interactions),
                                         interactionSource = interactions,
                                         colors = NavigationRailItemDefaults.colors(
-                                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                                            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                                            selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                                            indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
                                             unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                             unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                         ),
@@ -167,7 +164,6 @@ fun ToysApp() {
             }
         }
     }
-}
 
 @Composable
 private fun DestinationContent(
@@ -227,32 +223,39 @@ private fun DestinationContent(
 }
 
 
-/** Floating portrait navigation. Scaffold reserves its whole height, including the outer gap. */
+/** 具有半透明与 Material 3 原生胶囊指示器风格的底部悬浮导航栏。 */
 @Composable
 internal fun ToysDock(destination: Destination, onSelect: (Destination) -> Unit) {
     val scheme = MaterialTheme.colorScheme
     Box(
-        Modifier.testTag("navigation.dock").fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+        Modifier
+            .testTag("navigation.dock")
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
         Surface(
-            modifier = Modifier.widthIn(max = 460.dp).fillMaxWidth(),
-            shape = RoundedCornerShape(28.dp),
-            color = scheme.surfaceContainerLow,
-            border = BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.55f)),
-            shadowElevation = 12.dp,
+            modifier = Modifier.widthIn(max = 440.dp).fillMaxWidth(),
+            shape = RoundedCornerShape(32.dp),
+            color = scheme.surfaceContainer.copy(alpha = 0.55f),
+            border = BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.35f)),
+            shadowElevation = 0.dp,
         ) {
             Row(
-                Modifier.selectableGroup().padding(6.dp),
+                Modifier
+                    .selectableGroup()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Destination.entries.forEach { item ->
                     val selected = item == destination
                     val interactions = remember { MutableInteractionSource() }
                     Column(
-                        modifier = Modifier.weight(1f).testTag("navigation.${item.name.lowercase()}")
-                            .clip(RoundedCornerShape(22.dp))
-                            .background(if (selected) scheme.primary.copy(alpha = 0.14f) else Color.Transparent)
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("navigation.${item.name.lowercase()}")
+                            .clip(RoundedCornerShape(20.dp))
                             .toysPressFeedback(interactions)
                             .selectable(
                                 selected = selected,
@@ -261,15 +264,35 @@ internal fun ToysDock(destination: Destination, onSelect: (Destination) -> Unit)
                                 indication = androidx.compose.foundation.LocalIndication.current,
                                 onClick = { if (!selected) onSelect(item) },
                             )
-                            .heightIn(min = 60.dp)
-                            .padding(horizontal = 2.dp, vertical = 8.dp),
+                            .heightIn(min = 54.dp)
+                            .padding(vertical = 4.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+                        verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
                     ) {
-                        val color = if (selected) scheme.primary else scheme.onSurfaceVariant
-                        Icon(painterResource(item.icon), contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
-                        Text(item.label, style = MaterialTheme.typography.labelMedium,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, color = color)
+                        Box(
+                            modifier = Modifier
+                                .height(30.dp)
+                                .clip(RoundedCornerShape(15.dp))
+                                .background(
+                                    if (selected) scheme.secondaryContainer.copy(alpha = 0.85f)
+                                    else Color.Transparent
+                                )
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                painter = painterResource(item.icon),
+                                contentDescription = null,
+                                tint = if (selected) scheme.onSecondaryContainer else scheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        Text(
+                            text = item.label,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (selected) scheme.onSurface else scheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
