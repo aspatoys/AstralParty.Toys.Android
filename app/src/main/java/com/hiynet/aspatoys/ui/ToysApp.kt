@@ -67,16 +67,21 @@ import com.hiynet.aspatoys.ui.market.MarketController
 import com.hiynet.aspatoys.ui.market.MarketScreen
 import com.hiynet.aspatoys.ui.mods.ModsController
 import com.hiynet.aspatoys.ui.mods.ModsScreen
+import com.hiynet.aspatoys.ui.customize.CardCustomizationController
+import com.hiynet.aspatoys.ui.customize.CardCustomizationScreen
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import com.hiynet.aspatoys.ui.settings.SettingsScreen
 import com.hiynet.aspatoys.ui.theme.ToysBackdrop
 import com.hiynet.aspatoys.ui.theme.ToysMotion
 import com.hiynet.aspatoys.ui.theme.toysPressFeedback
 import com.hiynet.aspatoys.ui.theme.OverlayAppearanceSync
 
-/** 四个顶层页面：模组、市场、加载器、设置。图标统一成同一套 Material 线性字形。 */
+/** 五个顶层页面：模组、市场、自定义、加载器、设置。图标统一成同一套 Material 线性字形。 */
 enum class Destination(val label: String, val icon: Int) {
     MODS("模组", R.drawable.ic_nav_mods),
     MARKET("市场", R.drawable.ic_nav_market),
+    CUSTOMIZE("自定义", R.drawable.ic_nav_customize),
     LOADER("加载器", R.drawable.ic_nav_loader),
     SETTINGS("设置", R.drawable.ic_nav_settings),
 }
@@ -95,6 +100,7 @@ fun ToysApp() {
     val market = remember { MarketController(container, scope) }
     val mods = remember { ModsController(container, scope, appContext) }
     val installer = remember { LoaderInstaller(appContext) }
+    val cards = remember { CardCustomizationController(container, scope, appContext) }
     OverlayAppearanceSync(container.settings)
 
     var destination by rememberSaveable { mutableStateOf(Destination.MODS) }
@@ -106,7 +112,7 @@ fun ToysApp() {
                 val wide = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
                 if (wide) {
                     Row(modifier = Modifier.fillMaxSize()) {
-                            NavigationRail(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.65f)) {
+                            NavigationRail(modifier = Modifier.verticalScroll(rememberScrollState()), containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.65f)) {
                                 Spacer(Modifier.height(12.dp))
                                 Destination.entries.forEach { item ->
                                     val interactions = remember { MutableInteractionSource() }
@@ -133,6 +139,7 @@ fun ToysApp() {
                                     market = market,
                                     mods = mods,
                                     installer = installer,
+                                cards = cards,
                                     container = container,
                                     onOpenSettings = { destination = Destination.SETTINGS },
                                     modifier = if (destination == Destination.MARKET) Modifier.fillMaxSize()
@@ -154,6 +161,7 @@ fun ToysApp() {
                                 market = market,
                                 mods = mods,
                                 installer = installer,
+                                cards = cards,
                                 container = container,
                                 onOpenSettings = { destination = Destination.SETTINGS },
                                 modifier = Modifier.fillMaxSize().padding(innerPadding),
@@ -171,6 +179,7 @@ private fun DestinationContent(
     market: MarketController,
     mods: ModsController,
     installer: LoaderInstaller,
+    cards: CardCustomizationController,
     container: AppContainer,
     onOpenSettings: () -> Unit,
     modifier: Modifier,
@@ -196,6 +205,8 @@ private fun DestinationContent(
                 Destination.MODS -> ModsScreen(controller = mods)
 
                 Destination.MARKET -> MarketScreen(controller = market)
+
+                Destination.CUSTOMIZE -> CardCustomizationScreen(cards)
 
                 Destination.LOADER -> LoaderScreen(
                     installer = installer,

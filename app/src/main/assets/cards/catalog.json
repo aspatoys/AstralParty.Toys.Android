@@ -1,0 +1,1072 @@
+[
+  {
+    "key": "UT_Event_12702",
+    "name": "隐匿调查-阶段1",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_12703",
+    "name": "隐匿调查",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_12704",
+    "name": "隐匿调查-阶段3",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_12705",
+    "name": "真相揭露",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30001",
+    "name": "平均分配",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30002",
+    "name": "疾走",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30003",
+    "name": "慷慨解囊",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30005",
+    "name": "服务器BUG",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30006",
+    "name": "食品安全",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30006_sfw",
+    "name": "食品安全（SFW）",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30007",
+    "name": "全民刮彩",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30008",
+    "name": "天使降临",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30009",
+    "name": "天崩地裂",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30010",
+    "name": "手牌抹X",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30012",
+    "name": "商店大酬宾",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30013",
+    "name": "拥挤通道",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30014",
+    "name": "天降之物",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30015",
+    "name": "集中隔离",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30016",
+    "name": "导电危机",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30017",
+    "name": "雷区",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30018",
+    "name": "口袋漏了",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30019",
+    "name": "战斗，爽！",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30020",
+    "name": "人人平等",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30021",
+    "name": "手牌转移",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30021_sfw",
+    "name": "手牌转移（SFW）",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30201",
+    "name": "雷暴将至",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30202",
+    "name": "红温警告",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30204",
+    "name": "海盗偷袭",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30204_sfw",
+    "name": "海盗偷袭（SFW）",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30205",
+    "name": "天降神兵",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Event_30206",
+    "name": "取长补短",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_MapEvent_31002",
+    "name": "小浣熊繁殖季",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_MapEvent_32066",
+    "name": "失控的糖果皮纳塔",
+    "category": "事件卡"
+  },
+  {
+    "key": "UT_Destiny_40001",
+    "name": "好运",
+    "category": "命运卡"
+  },
+  {
+    "key": "UT_Destiny_40002",
+    "name": "霉运",
+    "category": "命运卡"
+  },
+  {
+    "key": "UT_Destiny_40003",
+    "name": "好运",
+    "category": "命运卡"
+  },
+  {
+    "key": "UT_Destiny_40004",
+    "name": "霉运",
+    "category": "命运卡"
+  },
+  {
+    "key": "UT_Destiny_40005",
+    "name": "鸿运当头",
+    "category": "命运卡"
+  },
+  {
+    "key": "UT_Destiny_40006",
+    "name": "大难临头",
+    "category": "命运卡"
+  },
+  {
+    "key": "UT_Destiny_40007",
+    "name": "好运",
+    "category": "命运卡"
+  },
+  {
+    "key": "UT_Destiny_40008",
+    "name": "鸿运当头",
+    "category": "命运卡"
+  },
+  {
+    "key": "UT_Destiny_40009",
+    "name": "霉运",
+    "category": "命运卡"
+  },
+  {
+    "key": "UT_Destiny_40010",
+    "name": "大难临头",
+    "category": "命运卡"
+  },
+  {
+    "key": "UT_Destiny_40011",
+    "name": "好运",
+    "category": "命运卡"
+  },
+  {
+    "key": "UT_Destiny_40012",
+    "name": "霉运",
+    "category": "命运卡"
+  },
+  {
+    "key": "UT_MapEvent_31001",
+    "name": "小怪兽登场，领先的玩家要小心咯~",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_31003",
+    "name": "小心列车下个轮次开始时列车将对所有行进路线上的角色造成5点伤害",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_31004",
+    "name": "祭典准备会发免费食物咯！",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_3100401",
+    "name": "太辣了！需要紧急就医，被传送到医院格",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_3100402",
+    "name": "怎么这么硌牙？唉？里面包了星币？！获得5星币",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_3100403",
+    "name": "这一口下去大补啊！回复3点生命值",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_3100404",
+    "name": "吃的我拳头都硬了！攻击力+1，最多叠加3次，持续1次攻击",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_3100405",
+    "name": "健步如飞有没有？！下次移动速度+2",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_31005",
+    "name": "卡牌“路障”的出现概率大幅提高！",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_31006",
+    "name": "获得3张卡牌",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32001",
+    "name": "海盗王嘎呜登场",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32002",
+    "name": "刷新4个海盗鲨鱼",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32004",
+    "name": "海盗王嘎呜开始行动，随机追击角色",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32005",
+    "name": "刷新2个海盗精锐",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32021",
+    "name": "天王寺雅央登场，并刷出两个冰冷蓝灵",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32022",
+    "name": "刷新2个冰冷蓝灵，1个狂躁红灵。天王寺开始行动",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32023",
+    "name": "刷新1个刀剑灵体，1个长戟灵体。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32025",
+    "name": "吸收场上所有长戟灵体和刀剑灵体，每吸收一个为天王寺雅央恢复15%的生命并永久防御力+1，攻击力+1。随后所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32026",
+    "name": "刷新1个刀剑灵体，1个长戟灵体",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32035",
+    "name": "刷新1个氛围机器人，3个爆竹呱呱",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32036",
+    "name": "舞狮嘎呜和指挥平台出场",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32037",
+    "name": "刷新3个爆竹呱呱。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32039",
+    "name": "刷新1个氛围机器人，1个机械蛇龙。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32041",
+    "name": "刷新1个氛围机器人，2个机械蛇龙。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32042",
+    "name": "刷新1个果冻战士，3个魔法茶壶",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32043",
+    "name": "刷新1个果冻战士，2个果冻护卫",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32044",
+    "name": "刷新1个果冻巫师，1个果冻护卫。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32045",
+    "name": "代理院长登场",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32046",
+    "name": "学院安全官登场，所有玩家获得一张【是他干的】",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32047",
+    "name": "刷新2个果冻护卫，2个果冻巫师。所有怪物攻击力+1，防御力+2",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32050",
+    "name": "龙虾机关启动，刷新4个蟹布罗",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32051",
+    "name": "真梦梓登场，刷新3个虾布罗。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32052",
+    "name": "刷新2个虾布罗。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32053",
+    "name": "苍鲤登场，刷新2个金小鱼。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32053_sfw",
+    "name": "苍鲤登场，刷新2个金小鱼。所有怪物攻击力+1，防御力+1（SFW）",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32054",
+    "name": "刷新3个金小鱼。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32054_sfw",
+    "name": "刷新3个金小鱼。所有怪物攻击力+1，防御力+1（SFW）",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32055",
+    "name": "刷新3个蟹布罗。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32060",
+    "name": "科学怪人登场，舞会开始！",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32061",
+    "name": "刷新3个惊喜猴子盒，1个圆锯猴助手",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32062",
+    "name": "刷新2个惊喜猴子盒，1个科学怪猿。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32063",
+    "name": "刷新1个科学怪猿，1个圆锯猴助手。所有怪物防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32064",
+    "name": "刷新2个科学怪猿，1个圆锯猴助手。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32080",
+    "name": "收集凤凰的力量",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32081",
+    "name": "刷新1个铜盏孔雀，2个迎宾燕",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32082",
+    "name": "刷新2个铜盏鸳鸯，2个迎宾燕",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32083",
+    "name": "姬梦枫（孔雀意识）登场，刷新1个铜盏仙鹤。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32084",
+    "name": "姬梦枫（鸳鸯意识）登场，刷新1个铜盏仙鹤。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32085",
+    "name": "刷新1个铜盏孔雀，1个铜盏仙鹤。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32086",
+    "name": "刷新2个铜盏鸳鸯，1个铜盏仙鹤。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32087",
+    "name": "刷新2个迎宾燕，2个铜盏仙鹤。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32088",
+    "name": "失控凤凰登场，刷新1个铜盏孔雀，2个迎宾燕",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32090",
+    "name": "刷新1个铜盏孔雀，1个铜盏鸳鸯。所有怪物防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32103",
+    "name": "刷新1个氛围机器人，1个机械蛇龙，2个三联爆竹呱。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32111",
+    "name": "刷新1个智械海盗鲨，1个智械海王鲨",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32112",
+    "name": "刷新1个智械海盗鲨，1个智械中枢",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32121",
+    "name": "典狱长登场，刷新1个看守，3个魔法茶壶",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32122",
+    "name": "刷新3个罪恶茶壶，1个大盗。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32123",
+    "name": "刷新1个看守，2个果冻巫师，1个大盗",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32131",
+    "name": "刷新1个玩具恐龙，3个闹钟猫头鹰",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32131_sfw",
+    "name": "刷新1个玩具恐龙，3个闹钟猫头鹰（SFW）",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32132",
+    "name": "孩子王嘎呜登场，刷新1个采集小熊，1个闹钟猫头鹰",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32132_sfw",
+    "name": "孩子王嘎呜登场，刷新1个采集小熊，1个闹钟猫头鹰（SFW）",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32133",
+    "name": "刷新1个急救兔兔，1个采集小熊，1个玩具恐龙。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32134",
+    "name": "刷新1个急救兔兔，1个采集小熊，2个玩具恐龙。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_32134_sfw",
+    "name": "刷新1个急救兔兔，1个采集小熊，2个玩具恐龙。所有怪物攻击力+1，防御力+1（SFW）",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_35061",
+    "name": "科技巨头嘎呜登场，裁判艾米登场，刷新3个机械投手",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_35062",
+    "name": "刷新1个机械监控师",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_35063",
+    "name": "刷新1个机械四分卫，1个机械监控师。所有怪物攻击力+1，防御力+1",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_35064",
+    "name": "刷新1个机械四分卫，2个机械监控师",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_MapEvent_35071",
+    "name": "难以置信！居然没有倒下！",
+    "category": "地图事件"
+  },
+  {
+    "key": "UT_AltArt_CardFront_00001",
+    "name": "激光（异画）",
+    "category": "异画道具"
+  },
+  {
+    "key": "UT_AltArt_CardFront_00002",
+    "name": "你有我有（异画）",
+    "category": "异画道具"
+  },
+  {
+    "key": "UT_IAltArt_13020001",
+    "name": "激光（异画）",
+    "category": "异画道具"
+  },
+  {
+    "key": "UT_IAltArt_13020002",
+    "name": "巧克力蛋糕（异画）",
+    "category": "异画道具"
+  },
+  {
+    "key": "UT_IAltArt_13020013",
+    "name": "板砖（异画）",
+    "category": "异画道具"
+  },
+  {
+    "key": "UT_IAltArt_13020031",
+    "name": "活体书页（异画）",
+    "category": "异画道具"
+  },
+  {
+    "key": "UT_IAltArt_13021002",
+    "name": "你有我有（异画）",
+    "category": "异画道具"
+  },
+  {
+    "key": "UT_IAltArt_13021002_sfw",
+    "name": "你有我有（异画）",
+    "category": "异画道具"
+  },
+  {
+    "key": "UT_IAltArt_13021003",
+    "name": "加急加快（异画）",
+    "category": "异画道具"
+  },
+  {
+    "key": "UT_IAltArt_13021003_sfw",
+    "name": "加急加快（异画）",
+    "category": "异画道具"
+  },
+  {
+    "key": "UT_Item_AltArt_13020001",
+    "name": "激光（异画）",
+    "category": "异画道具"
+  },
+  {
+    "key": "UT_Item_AltArt_13020001_sfw",
+    "name": "激光（异画）",
+    "category": "异画道具"
+  },
+  {
+    "key": "UT_Item_AltArt_13020002",
+    "name": "巧克力蛋糕（异画）",
+    "category": "异画道具"
+  },
+  {
+    "key": "UT_Item_AltArt_13020013",
+    "name": "板砖（异画）",
+    "category": "异画道具"
+  },
+  {
+    "key": "UT_Item_AltArt_13020013_sfw",
+    "name": "板砖（异画）",
+    "category": "异画道具"
+  },
+  {
+    "key": "UT_Item_AltArt_13020031",
+    "name": "活体书页（异画）",
+    "category": "异画道具"
+  },
+  {
+    "key": "UT_Item_AltArt_13021002",
+    "name": "你有我有（异画）",
+    "category": "异画道具"
+  },
+  {
+    "key": "UT_Item_AltArt_13021002_sfw",
+    "name": "你有我有（异画）",
+    "category": "异画道具"
+  },
+  {
+    "key": "UT_Item_AltArt_13021003",
+    "name": "加急加快（异画）",
+    "category": "异画道具"
+  },
+  {
+    "key": "UT_Item_AltArt_13021003_sfw",
+    "name": "加急加快（异画）",
+    "category": "异画道具"
+  },
+  {
+    "key": "UT_HandCard_10001",
+    "name": "攻击(中)",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_10002",
+    "name": "防御(中)",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_10003",
+    "name": "攻击(大)",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_10004",
+    "name": "防御(大)",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_10005",
+    "name": "攻击(特大)",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_10006",
+    "name": "防御(特大)",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_10006_sfw",
+    "name": "防御(特大)（SFW）",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_10007",
+    "name": "名刀：嘎呜切",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_10008",
+    "name": "暗影突袭",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_10009",
+    "name": "蓄力",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_10010",
+    "name": "全力攻击",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_10011",
+    "name": "毒牙",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_10012",
+    "name": "撕咬",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_10013",
+    "name": "龙之咆哮",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20001",
+    "name": "激光",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20002",
+    "name": "巧克力蛋糕",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20003",
+    "name": "保护屏障",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20004",
+    "name": "钓鱼执法",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20005",
+    "name": "遥控骰子",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20006",
+    "name": "以毒攻毒",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20006_sfw",
+    "name": "以毒攻毒（SFW）",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20007",
+    "name": "灵魂链接",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20008",
+    "name": "狂暴",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20009",
+    "name": "自爆",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20009_sfw",
+    "name": "自爆（SFW）",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20010",
+    "name": "路障",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20011",
+    "name": "方向抉择",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20012",
+    "name": "皮筋弹弓",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20013",
+    "name": "板砖",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20014",
+    "name": "汉堡",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20015",
+    "name": "以牙还牙",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20017",
+    "name": "错误的目标",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20018",
+    "name": "爆破专家",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20019",
+    "name": "过期便当",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20020",
+    "name": "丧心病狂",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20021",
+    "name": "传递炸弹",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20021_sfw",
+    "name": "传递炸弹（SFW）",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20022",
+    "name": "抢夺",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20023",
+    "name": "拾荒",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20024",
+    "name": "随机传送门",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20024_sfw",
+    "name": "随机传送门（SFW）",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20025",
+    "name": "雪球攻击",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20026",
+    "name": "定向加速",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20027",
+    "name": "符卡-福",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20028",
+    "name": "符卡-祸",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20030",
+    "name": "活体书页",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20032",
+    "name": "命运的指引",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_20033",
+    "name": "强化拒止",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21001",
+    "name": "轨道炮",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21002",
+    "name": "你有我有",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21002_sfw",
+    "name": "你有我有（SFW）",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21003",
+    "name": "加急加快",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21003_sfw",
+    "name": "加急加快（SFW）",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21004",
+    "name": "王之力",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21005",
+    "name": "岿然不动",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21006",
+    "name": "奢华大餐",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21007",
+    "name": "定向爆破",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21008",
+    "name": "支援",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21009",
+    "name": "高升炮",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21010",
+    "name": "是他干的",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21014",
+    "name": "支援口香糖",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21015",
+    "name": "能量补充棒",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21016",
+    "name": "大聪明软糖",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21017",
+    "name": "古怪的附灵物",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21018",
+    "name": "释放青魂",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21019",
+    "name": "释放赤魂",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21020",
+    "name": "彩羽",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21021",
+    "name": "振作起来",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21022",
+    "name": "灰烬之羽",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21023",
+    "name": "吉星高照",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21024",
+    "name": "人机交融",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21025",
+    "name": "罪证嫌疑",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21026",
+    "name": "疾行菇",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21027",
+    "name": "仙品杨桃",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21028",
+    "name": "芳香蜜桃",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21029",
+    "name": "招财树",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21030",
+    "name": "开花仙人球",
+    "category": "手牌卡"
+  },
+  {
+    "key": "UT_HandCard_21031",
+    "name": "电流蒲公英",
+    "category": "手牌卡"
+  }
+]
