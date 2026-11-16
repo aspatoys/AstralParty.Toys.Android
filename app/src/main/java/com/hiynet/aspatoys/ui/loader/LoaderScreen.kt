@@ -117,6 +117,7 @@ fun LoaderScreen(
         ToysSection("访问权限") {
             PrivilegeModeCard(
                 mode = mode,
+                enabled = !busy,
                 onModeChanged = { next ->
                     mode = next
                     onModeChanged(next)
@@ -265,6 +266,7 @@ fun LoaderScreen(
 @Composable
 private fun PrivilegeModeCard(
     mode: String,
+    enabled: Boolean,
     onModeChanged: (String) -> Unit,
 ) {
     val rootMode = mode == AppSettings.PrivilegeRoot
@@ -277,11 +279,13 @@ private fun PrivilegeModeCard(
         Text("提权方式", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(
+                enabled = enabled,
                 selected = !rootMode,
                 onClick = { onModeChanged(AppSettings.PrivilegeShizuku) },
                 label = { Text("Shizuku 模式") },
             )
             FilterChip(
+                enabled = enabled,
                 selected = rootMode,
                 onClick = { onModeChanged(AppSettings.PrivilegeRoot) },
                 label = { Text("Root 模式") },
@@ -291,7 +295,7 @@ private fun PrivilegeModeCard(
             if (rootMode) {
                 "通过 su 直接读写游戏私有目录，不需要 Shizuku 服务和授权。"
             } else {
-                "通过 Shizuku 的 shell 身份读写，需要 Shizuku 服务运行并授权。"
+                "需要启动并授权 Shizuku。若系统限制游戏目录属主，请以 Root 启动 Shizuku，或切换 Root 模式。"
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

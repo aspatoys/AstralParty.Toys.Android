@@ -94,6 +94,7 @@ class LoaderInstaller(
     // ---------------------------------------------------------------- 状态
 
     fun status(): Status {
+        LoaderOwnership.default.reset()
         val rootSelected = ShizukuShell.selectedMode() == com.hiynet.aspatoys.data.settings.AppSettings.PrivilegeRoot
         if (!serviceAvailable()) {
             return Status(
@@ -140,7 +141,7 @@ class LoaderInstaller(
             },
             ownershipWarning = runCatching { hasPayload() }.getOrDefault(false).let { ready ->
                 if (!ready) null
-                else LoaderOwnership.default.verify(listOf(BOOTSTRAP_REMOTE, "$LOADER_ROOT/sdk/CesiumLoader.SDK.dll"))
+                else LoaderOwnership.default.verify(listOf(path, LOADER_ROOT, "$LOADER_ROOT/logs", "$LOADER_ROOT/configs", BOOTSTRAP_REMOTE, "$LOADER_ROOT/sdk/CesiumLoader.SDK.dll"))
             },
         )
     }
@@ -150,6 +151,7 @@ class LoaderInstaller(
     /** 安装：备份原包 → 注入程序集 → 重封装容器 → 部署载荷 → 写回。返回安装后的状态。 */
     fun install(log: (String) -> Unit): Status {
         require(permissionGranted()) { "先给 Shizuku / Root 授权" }
+        LoaderOwnership.default.reset()
         transaction.install(resolveBundle(), log)
         return status()
     }
@@ -205,6 +207,8 @@ class LoaderInstaller(
             "mkdir -p " + listOf("mods", "configs", "logs", "data", "disabled_mods", "skins", "sdk", "bootstrap")
                 .joinToString(" ") { ShizukuShell.quote("$LOADER_ROOT/$it") },
         )
+        // Repair old trees before deploying; later writes also verify each new inode.
+        adoptOwnership(log)
 
         for ((asset, relative) in listOf(
             SDK_ASSET to "sdk/CesiumLoader.SDK.dll",
@@ -234,21 +238,10 @@ class LoaderInstaller(
      */
     private fun adoptOwnership(log: (String) -> Unit) {
         val owner = LoaderOwnership.default
-        if (!owner.isSupported()) {
-            log(
-                "提示：当前提权通道 uid=${owner.channelUid() ?: "?"}，不能修改文件属主；" +
-                    "若加载器没生效，请用 root 或以 root 启动的 Shizuku",
-            )
-            return
-        }
         owner.reset()
-        val adopted = owner.adoptTree(LOADER_ROOT)
-        if (!adopted) {
-            log("警告：加载器目录属主修正失败（${owner.lastError}）")
-            return
-        }
-        val problem = owner.verify(listOf(BOOTSTRAP_REMOTE, "$LOADER_ROOT/sdk/CesiumLoader.SDK.dll"))
-        log(problem?.let { "警告：$it" } ?: "加载器目录属主已交给游戏（${owner.ids()?.spec}）")
+        owner.requireDirectories(LOADER_ROOT)
+        owner.requireOwned(LOADER_ROOT, recursive = true)
+        log("加载器目录属主已校验（${owner.ids()?.spec}）")
     }
 
     /**

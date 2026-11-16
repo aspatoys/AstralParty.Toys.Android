@@ -17,6 +17,18 @@ import org.junit.Test
  */
 class LoaderOwnershipTest {
 
+    @Test
+    fun unreadableOwnershipMustNotPassVerification() {
+        val owner = LoaderOwnership(exec = { command ->
+            when {
+                command == "id -u" -> "0"
+                command.startsWith("stat -c '%u %g'") -> "10331 1078"
+                else -> throw IllegalStateException("Permission denied")
+            }
+        })
+        assertTrue("missing/unreadable bootstrap must fail", owner.verify(listOf("/sdcard/Android/data/com.feimo.astralparty/files/CesiumLoader/bootstrap/x.dll")) != null)
+    }
+
     private class RecordingExec(private val uid: Int = 0) {
         val commands = mutableListOf<String>()
 
@@ -49,7 +61,7 @@ class LoaderOwnershipTest {
         val owner = LoaderOwnership(exec = exec::run)
 
         assertFalse(owner.isSupported())
-        assertEquals(null, owner.ids())
+        assertEquals(LoaderOwnership.Ids(10331, 1078), owner.ids())
         assertFalse(owner.adopt("/sdcard/Android/data/com.feimo.astralparty/files/CesiumLoader/x.dll"))
         assertTrue(exec.chowns().isEmpty())
     }
@@ -126,5 +138,54 @@ class LoaderOwnershipTest {
 
         assertFalse(owner.adopt("/sdcard/Android/data/com.feimo.astralparty/files/CesiumLoader/x.dll"))
         assertTrue(owner.lastError!!.contains("Operation not permitted"))
+    }
+
+    @Test
+    fun identityMustNeverResolveToRootOrShell() {
+        for (uid in listOf(0, 2000, -1, 99999)) {
+            val owner = LoaderOwnership(exec = { if (it == "id -u") "0" else "$uid 1078" })
+            assertEquals(null, owner.ids())
+            assertFalse(owner.adopt("/game/file"))
+        }
+    }
+
+    @Test
+    fun reconnectAndGameReinstallMustNotReuseCachedIdentities() {
+        var channel = 2000
+        var game = 10331
+        val owner = LoaderOwnership(exec = { if (it == "id -u") "$channel" else "$game 1078" })
+        assertFalse(owner.isSupported())
+        assertEquals(10331, owner.ids()!!.uid)
+        channel = 0
+        game = 10400
+        assertTrue(owner.isSupported())
+        assertEquals(10400, owner.ids()!!.uid)
+    }
+
+    @Test
+    fun successfulChownWithWrongResultMustFail() {
+        val owner = LoaderOwnership(exec = {
+            when {
+                it == "id -u" -> "0"
+                it.startsWith("stat -c '%u %g'") -> "10331 1078"
+                it.startsWith("stat -c %u") -> "0"
+                else -> ""
+            }
+        })
+        org.junit.Assert.assertThrows(IllegalStateException::class.java) { owner.requireOwned("/game/file") }
+    }
+
+    @Test
+    fun recursiveVerificationRejectsMissedChild() {
+        val owner = LoaderOwnership(exec = {
+            when {
+                it == "id -u" -> "0"
+                it.startsWith("stat -c '%u %g'") -> "10331 1078"
+                it.startsWith("stat -c %u") -> "10331"
+                it.startsWith("find ") -> "10331\n0\n10331"
+                else -> ""
+            }
+        })
+        org.junit.Assert.assertThrows(IllegalStateException::class.java) { owner.requireOwned("/game/tree", true) }
     }
 }

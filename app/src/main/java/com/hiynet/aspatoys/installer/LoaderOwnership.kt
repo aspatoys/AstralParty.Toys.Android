@@ -26,12 +26,6 @@ class LoaderOwnership(
         val spec: String get() = "$uid:$gid"
     }
 
-    @Volatile
-    private var cachedUid: Int? = null
-
-    @Volatile
-    private var cachedIds: Ids? = null
-
     /** 最近一次失败原因；成功时为空。 */
     @Volatile
     var lastError: String? = null
@@ -39,9 +33,7 @@ class LoaderOwnership(
 
     /** 提权通道自己的 uid：0 = 能 chown，2000 = 只能写有权限的地方。 */
     fun channelUid(): Int? {
-        cachedUid?.let { return it }
         val value = runCatching { exec("id -u").trim().toIntOrNull() }.getOrNull()
-        if (value != null) cachedUid = value
         return value
     }
 
@@ -55,17 +47,15 @@ class LoaderOwnership(
      * 取不到就返回 null，让调用方跳过而不是猜一个值去 chown。
      */
     fun ids(): Ids? {
-        cachedIds?.let { return it }
-        if (!isSupported()) return null
         val output = runCatching { exec("stat -c '%u %g' " + ShizukuShell.quote(dataDir())) }.getOrNull()
         val parts = output?.trim()?.split(Regex("\\s+")).orEmpty()
         val uid = parts.getOrNull(0)?.toIntOrNull()
         val gid = parts.getOrNull(1)?.toIntOrNull()
-        if (uid == null || gid == null) {
+        if (uid == null || uid % 100000 !in 10000..19999 || gid == null || gid < 0) {
             lastError = "读不到游戏 uid（$gamePackage）"
             return null
         }
-        return Ids(uid, gid).also { cachedIds = it }
+        return Ids(uid, gid)
     }
 
     /** 把单个路径（文件或目录）的属主改回游戏。通道做不到时静默跳过。 */
@@ -88,8 +78,7 @@ class LoaderOwnership(
             lastError = null
             true
         } catch (error: Throwable) {
-            // 改属主失败不等于安装失败：文件已经写好了，只是游戏可能读不到。
-            // 记下原因，交给 [verify] 在安装结束时给出明确提示。
+            // 保留诊断；写入调用方必须通过 requireOwned 阻止误报成功。
             // 这里刻意不调 android.util.Log —— 纯逻辑要能在 JVM 单测里跑。
             lastError = "${error.message ?: error} ← $command"
             false
@@ -113,7 +102,7 @@ class LoaderOwnership(
         val bad = mutableListOf<String>()
         for (path in paths) {
             val owner = runCatching { exec("stat -c %u " + ShizukuShell.quote(path)).trim().toIntOrNull() }
-                .getOrNull() ?: continue
+                .getOrNull() ?: return "无法确认文件属主（$path），文件缺失或权限不足；未通过安装校验"
             if (owner != ids.uid) bad += path
         }
         if (bad.isEmpty()) return null
@@ -125,15 +114,57 @@ class LoaderOwnership(
 
     private fun dataDir(): String = "/sdcard/Android/data/$gamePackage"
 
-    /** 换模式、重装应用、或换游戏包之后要重新探测。 */
+    /** Repair before publication, then verify even when the transport cannot chown. */
+    fun requireOwned(path: String, recursive: Boolean = false) {
+        requirePaths(listOf(path), recursive)
+    }
+
+    private fun requirePaths(paths: List<String>, recursive: Boolean = false) {
+        if (isSupported()) {
+            check(adopt(paths, recursive)) {
+                "文件属主修复失败：${lastError ?: paths.first()}"
+            }
+        }
+        val problem = verify(paths)
+        check(problem == null) { problem!! }
+        if (recursive) {
+            val expected = checkNotNull(ids()) { "读不到游戏 uid" }.uid
+            // find does not propagate a failing -exec status; emit an invalid owner instead.
+            val stat = ShizukuShell.quote("stat -c %u \"\$1\" 2>/dev/null || echo invalid")
+            val owners = exec("find " + paths.joinToString(" ") { ShizukuShell.quote(it) } +
+                " -exec sh -c $stat sh {} \\;")
+                .lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+            check(owners.isNotEmpty() && owners.all { it.toIntOrNull() == expected }) {
+                "加载器目录仍有属主异常，未通过安装校验：${paths.first()}"
+            }
+        }
+    }
+
+    /** mkdir -p may create several ancestors. Repair only this game's files hierarchy. */
+    fun requireDirectories(path: String) {
+        val normalized = path.replaceFirst(Regex("^/storage/emulated/0(?=/|$)"), "/sdcard").trimEnd('/')
+        val base = dataDir() + "/files"
+        if (normalized == base || normalized.startsWith("$base/")) {
+            require(normalized.split('/').none { it == "." || it == ".." }) { "目录路径无效" }
+            var current = base
+            val parents = mutableListOf(current)
+            for (part in normalized.removePrefix(base).split('/').filter { it.isNotEmpty() }) {
+                current += "/$part"
+                parents += current
+            }
+            requirePaths(parents)
+        } else {
+            requireOwned(path)
+        }
+    }
+
+    /** Clear diagnostics on channel changes. Identities are always read afresh, including reconnects. */
     fun reset() {
-        cachedUid = null
-        cachedIds = null
         lastError = null
     }
 
     companion object {
-        /** 全进程共用一份（uid 缓存跟着它走）。 */
+        /** 全进程共用诊断实例，不缓存 uid，防止服务重连后身份过期。 */
         val default: LoaderOwnership by lazy { LoaderOwnership() }
     }
 }

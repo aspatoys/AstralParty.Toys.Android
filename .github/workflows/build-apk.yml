@@ -185,6 +185,7 @@ jobs:
             out="app/build/outputs/apk/debug/app-debug.apk"
           fi
           ./gradlew --no-daemon --console=plain \
+            --no-configuration-cache \
             -PappVersionName="${{ steps.version.outputs.name }}" \
             -PappVersionCode="${{ steps.version.outputs.code }}" \
             -PcesiumReleaseZip="${{ steps.loader.outputs.zip }}" \
@@ -192,6 +193,12 @@ jobs:
             -PcesiumBootstrapDll="$PWD/loader/managed/CesiumLoader.Android.Bootstrap/bin/Release/netstandard2.0/CesiumLoader.Android.Bootstrap.dll" \
             -PcesiumInjectedDll="$PWD/payload/AstralParty.Runtime.injected.dll" \
             :app:testDebugUnitTest "$task"
+          CESIUM_BUNDLE="$PWD/app/src/main/assets/cesium/recovery/original.bundle" \
+          CESIUM_PATCHED_DLL="$PWD/app/src/main/assets/cesium/AstralParty.Runtime.injected.dll" \
+          CESIUM_REBUILD_BUNDLE="$PWD/app/src/main/assets/cesium/recovery/original.bundle" \
+          CESIUM_REBUILD_DLL="$PWD/app/src/main/assets/cesium/AstralParty.Runtime.injected.dll" \
+          CESIUM_REBUILD_EXPECT_SHA256="37fc6d8576529a501c9a3aa0bef25ad70ad13881c0b811f9d245d434eac57991" \
+            ./gradlew --no-daemon --console=plain --no-configuration-cache :cesiumcore:testDebugUnitTest
           echo "out=$out" >> "$GITHUB_ENV"
 
       - name: Show bundled loader version

@@ -10,6 +10,8 @@ interface BundleIo {
     fun hash(path: String): String
     fun publish(path: String, bytes: ByteArray, expectedSha256: String)
     fun stopGame()
+    /** Content hashes alone cannot detect a cache left owned by root by an older release. */
+    fun ensureAccessible(path: String) {}
 }
 
 /** Installation and recovery share the same version identity and never overwrite the legacy backup. */
@@ -53,6 +55,7 @@ class LoaderBundleTransaction(
             preserveBackup(recoverySource(), log)
             io.stopGame()
             require(io.hash(remote) == currentSha) { "缓存包在操作期间发生变化，未修改游戏缓存" }
+            io.ensureAccessible(remote)
             deploy(log)
             log("已识别正常安装产物：仅更新加载器及模组，不重复注入")
             return
@@ -63,6 +66,7 @@ class LoaderBundleTransaction(
         preserveBackup(current, log)
         io.stopGame()
         require(io.hash(remote) == currentSha) { "缓存包在操作期间发生变化，未修改游戏缓存" }
+        io.ensureAccessible(remote)
         deploy(log)
         require(io.hash(remote) == currentSha) { "部署期间缓存包发生变化，未修改游戏缓存" }
         try {
@@ -83,7 +87,12 @@ class LoaderBundleTransaction(
     fun restore(remote: String, log: (String) -> Unit = {}) {
         val currentSha = io.hash(remote)
         when (classify(currentSha)) {
-            State.ORIGINAL -> { log("缓存包已经是原版，无需重复还原"); return }
+            State.ORIGINAL -> {
+                io.stopGame()
+                io.ensureAccessible(remote)
+                log("缓存包已经是原版，已校验属主，无需重复还原")
+                return
+            }
             State.UNKNOWN -> error("当前缓存为未知版本（$currentSha），未用旧原包覆盖游戏；请在游戏中修复资源")
             State.INSTALLED -> Unit
         }
@@ -91,6 +100,7 @@ class LoaderBundleTransaction(
         preserveBackup(original, log)
         io.stopGame()
         require(io.hash(remote) == currentSha) { "缓存包在还原前发生变化，未写回" }
+        io.ensureAccessible(remote)
         io.publish(remote, original, originalSha256)
         require(io.hash(remote) == originalSha256) { "还原后指纹校验失败，原版备份仍保留" }
         log("还原完成：原包 sha256=$originalSha256")

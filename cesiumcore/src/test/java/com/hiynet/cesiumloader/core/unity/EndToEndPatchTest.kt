@@ -68,7 +68,8 @@ class EndToEndPatchTest {
         assertArrayEquals("重新读回的程序集必须就是注入产物", injected, TextAssetPatch.read(roundTripped, ASSEMBLY))
 
         // 除程序集外，SerializedFile 的其它字节都不该动
-        val slot = TextAssetPatch.findSlot(patchedSerialized, TextAssetPatch.readDataOffset(patchedSerialized), ASSEMBLY)
+        // Replacement zeroes the remainder of the ORIGINAL slot when the new DLL is smaller.
+        val slot = TextAssetPatch.findSlot(serialized, TextAssetPatch.readDataOffset(serialized), ASSEMBLY)
         var diffOutsideSlot = 0
         for (i in serialized.indices) {
             if (i in slot.offset until slot.offset + slot.size) continue

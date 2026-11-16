@@ -26,14 +26,8 @@ class LoaderBundleTransactionRealBundleTest {
 
     @Before
     fun setUp() {
-        val root = projectRoot()
-        val fixture = File(root.parentFile, "cesium-android-direct/fixtures/original-0c6650c5e9eccffde61b8397d4694f72.bundle")
-        val rebuilt = File(root, "build/harness-verification/installer-recovery/rebuilt-0c665.bundle")
-        assumeTrue("raw 77da fixture is unavailable", fixture.isFile)
-        assumeTrue("rebuilt 37fc bundle is unavailable; run InstallerRebuildReproTest first", rebuilt.isFile)
-
-        originalBytes = fixture.readBytes()
-        patchedBytes = rebuilt.readBytes()
+        originalBytes = InstallerFixtures.original
+        patchedBytes = InstallerFixtures.patched
         assertEquals(LoaderInstaller.ORIGINAL_SHA256, LoaderBundleTransaction.sha256(originalBytes))
         assertEquals(LoaderInstaller.PATCHED_SHA256, LoaderBundleTransaction.sha256(patchedBytes))
 

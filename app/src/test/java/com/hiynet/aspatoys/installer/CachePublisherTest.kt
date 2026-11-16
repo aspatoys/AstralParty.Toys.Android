@@ -468,17 +468,10 @@ class CachePublisherTest {
 
     private class RealBundles(val original: ByteArray, val patched: ByteArray)
 
-    /** The shipped 8 MB / 19 MB fixtures; skipped when the sibling Cesium checkout is absent. */
+    /** Rebuild from this APK's verified assets so CI cannot silently skip real-cache coverage. */
     private fun realBundles(): RealBundles? {
-        // The two fixtures live at different depths: the original bundle sits in the sibling
-        // cesium-android-direct checkout, the patched one under this project's build directory.
-        val original = findUpward("cesium-android-direct/fixtures/original-0c6650c5e9eccffde61b8397d4694f72.bundle")
-        val patched = findUpward("build/harness-verification/installer-recovery/rebuilt-0c665.bundle")
-        assumeTrue("real bundle fixtures are unavailable", original != null && patched != null)
-        val o = original ?: return null
-        val p = patched ?: return null
-        val ob = o.readBytes()
-        val pb = p.readBytes()
+        val ob = InstallerFixtures.original
+        val pb = InstallerFixtures.patched
         assertEquals("fixture must be the original bundle", LoaderInstaller.ORIGINAL_SHA256, sha(ob))
         assertEquals("fixture must be the patched bundle", LoaderInstaller.PATCHED_SHA256, sha(pb))
         assertNotNull(journalDir)

@@ -106,6 +106,7 @@ class LoaderBundleTransactionTest {
         assertEquals(1, io.stopCount)
         assertEquals(1, deployCalls)
         assertFalse(legacy().exists())
+        assertEquals(1, io.accessChecks)
     }
 
     @Test
@@ -117,6 +118,24 @@ class LoaderBundleTransactionTest {
         tx.install("/remote/__data") { }
 
         assertEquals(sha(original), sha(canonical().readBytes()))
+    }
+
+    @Test
+    fun repeatedInstallCannotSucceedWhenCacheOwnershipRepairFails() {
+        io.remote = patched.copyOf()
+        io.accessError = IllegalStateException("cache owner is root")
+        assertThrows(IllegalStateException::class.java) { tx.install("/remote/__data") }
+        assertEquals(0, deployCalls)
+        assertEquals(0, io.publishCount)
+        assertEquals(sha(patched), sha(io.remote))
+    }
+
+    @Test
+    fun failedPayloadOwnershipCheckNeverPublishesPatchedGameCache() {
+        deployError = IllegalStateException("loader owner is root")
+        assertThrows(IllegalStateException::class.java) { tx.install("/remote/__data") }
+        assertEquals(0, io.publishCount)
+        assertEquals(sha(original), sha(io.remote))
     }
 
     @Test
@@ -249,7 +268,8 @@ class LoaderBundleTransactionTest {
 
         tx.restore("/remote/__data") { }
 
-        assertEquals(0, io.stopCount)
+        assertEquals(1, io.stopCount)
+        assertEquals(1, io.accessChecks)
         assertEquals(0, io.publishCount)
     }
 
@@ -269,6 +289,9 @@ class LoaderBundleTransactionTest {
     }
 
     private class FakeIo(var remote: ByteArray) : BundleIo {
+        var accessChecks = 0
+        var accessError: Exception? = null
+        override fun ensureAccessible(path: String) { accessChecks++; accessError?.let { throw it } }
         var stopCount = 0
         var publishCount = 0
         var readError: Exception? = null

@@ -37,13 +37,8 @@ class LoaderInstallerRecoveryTest {
     fun setUp() {
         root = Files.createTempDirectory("loader-installer-test").toFile()
         io = FakeIo()
-        val fixture = File(projectRoot().parentFile,
-            "cesium-android-direct/fixtures/original-0c6650c5e9eccffde61b8397d4694f72.bundle")
-        assumeTrue("raw 77da fixture is unavailable", fixture.isFile)
-        originalBytes = fixture.readBytes()
-        val rebuilt = File(projectRoot(), "build/harness-verification/installer-recovery/rebuilt-0c665.bundle")
-        assumeTrue("rebuilt 37fc fixture is unavailable", rebuilt.isFile)
-        patchedBytes = rebuilt.readBytes()
+        originalBytes = InstallerFixtures.original
+        patchedBytes = InstallerFixtures.patched
     }
 
     @After

@@ -45,6 +45,8 @@ interface LoaderFs {
 /** 经 Shizuku 执行 shell 的实现；所有路径都按单引号字面量转义。 */
 class ShizukuLoaderFs(
     private val owner: LoaderOwnership = LoaderOwnership.default,
+    private val exec: (String) -> String = { ShizukuShell.exec(it) },
+    private val writeStream: (String, java.io.InputStream) -> Unit = { command, source -> ShizukuShell.writeStream(command, source) },
 ) : LoaderFs {
 
     override fun isAvailable(): Boolean = ShizukuShell.isServiceAlive() && ShizukuShell.hasPermission()
@@ -71,7 +73,8 @@ class ShizukuLoaderFs(
         runCatching { ShizukuShell.execBytes("cat " + q(path) + " 2>/dev/null; true") }.getOrNull()
 
     override fun move(from: String, to: String) {
-        ShizukuShell.exec("mv " + q(from) + " " + q(to))
+        owner.requireOwned(from, recursive = true)
+        exec("mv " + q(from) + " " + q(to))
     }
 
     override fun delete(path: String) {
@@ -79,9 +82,9 @@ class ShizukuLoaderFs(
     }
 
     override fun makeDirectories(path: String) {
-        ShizukuShell.exec("mkdir -p " + q(path))
+        exec("mkdir -p " + q(path))
         // root 建的目录属主是 root，游戏连遍历都不行；建完立刻改回游戏 uid。
-        owner.adopt(path)
+        owner.requireDirectories(path)
     }
 
     /** 文件字节数；读不到时返回 0（不猜）。 */
@@ -101,21 +104,21 @@ class ShizukuLoaderFs(
      * 后缀，不会和真实文件重名，失败时也不会污染目标。
      *
      * 代价是 `mv -f` 换成新 inode，属主变成执行者（Root 模式下就是 root），游戏就读不到了，
-     * 所以写完之后要把属主改回游戏。通道改不了属主时（Shizuku 是 shell(2000)）
-     * [LoaderOwnership.adopt] 自己会跳过 —— 那条通道的行为与 1.1.2 一致，本次不动。
+     * 暂存文件必须先修正并验证属主，再替换旧文件。shell(2000) 不能 chown，
+     * 仅当挂载层已将文件归属游戏时才允许发布，否则保留旧文件并明确报错。
      */
     private fun writeAtomic(remotePath: String, source: java.io.InputStream) {
         val temp = "$remotePath.cesium-tmp"
         try {
-            ShizukuShell.writeStream("cat > " + q(temp), source)
-            ShizukuShell.exec("mv -f " + q(temp) + " " + q(remotePath))
+            writeStream("cat > " + q(temp), source)
+            owner.requireDirectories(remotePath.substringBeforeLast('/'))
+            owner.requireOwned(temp)
+            exec("mv -f " + q(temp) + " " + q(remotePath))
+            owner.requireOwned(remotePath)
         } catch (error: Throwable) {
-            runCatching { ShizukuShell.exec("rm -f " + q(temp)) }
+            runCatching { exec("rm -f " + q(temp)) }
             throw error
         }
-        // `mv -f` 换成了新 inode，属主变成执行者（Root 模式下就是 root），游戏就读不到了。
-        // Root 通道下把属主改回游戏；Shizuku 通道不动（[LoaderOwnership.adopt] 自己会跳过）。
-        owner.adopt(remotePath)
     }
 
     override var lastError: String? = null
