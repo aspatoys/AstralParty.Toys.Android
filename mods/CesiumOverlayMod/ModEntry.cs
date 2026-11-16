@@ -12,7 +12,7 @@ using FairyGUI;
 using FairyGUI.Utils;
 using UnityEngine;
 
-[assembly: ModManifest("Cesium 安卓悬浮窗", "0.7.0", "TenkinMori / Android adaptation", "半屏侧边工具箱、中文分组与变速面板", Permissions = ModPermission.ReadGameState | ModPermission.UI | ModPermission.FileWrite | ModPermission.SpeedHack)]
+[assembly: ModManifest("Cesium 安卓悬浮窗", "0.8.0", "TenkinMori / Android adaptation", "半屏侧边工具箱、中文分组与变速面板", Permissions = ModPermission.ReadGameState | ModPermission.UI | ModPermission.FileWrite | ModPermission.SpeedHack)]
 namespace CesiumOverlayMod
 {
     public static class ModEntry
@@ -33,7 +33,7 @@ namespace CesiumOverlayMod
         private string renderedSelection;
 
         public override string Name => "Cesium 安卓悬浮窗";
-        public override string Version => "0.7.0";
+        public override string Version => "0.8.0";
         public override void OnLoad() { SpeedPanel.BeginSession(); }
         public override void OnInitialize()
         {
@@ -51,9 +51,11 @@ namespace CesiumOverlayMod
             {
                 nextTheme = now + 1;
                 bool changed = OverlayTheme.Poll();
+                changed |= PollOptions();
                 BuiltinActions.Refresh();
                 if (changed && GRoot.inst != null && root != null && !root.isDisposed) Build();
             }
+            if (!Application.isFocused && resizing) { resizing = false; resizeTouch = -1; if (GRoot.inst != null) Build(); }
             if (GRoot.inst == null) return;
             if (root == null || root.isDisposed || root.parent != GRoot.inst || width != GRoot.inst.width || height != GRoot.inst.height)
             {
@@ -71,6 +73,7 @@ namespace CesiumOverlayMod
 
         private void Build()
         {
+            resizing = false; resizeTouch = -1;
             VirtualKeyboard.Instance?.Clear();
             float iconY = icon == null ? GRoot.inst.height * .16f : icon.y;
             if (root != null && !root.isDisposed) root.Dispose();
@@ -83,19 +86,18 @@ namespace CesiumOverlayMod
             GRoot.inst.AddChild(root);
 
             var bounds = OverlayPresentation.Bounds(width, height);
-            uiScale = Math.Min(1.5f, bounds.Width / 560f);
-            panelWidth = bounds.Width / uiScale;
-            panelHeight = bounds.Height / uiScale;
+            uiScale = Math.Max(.4f, Math.Min(1.5f, Math.Min(width, height) / 600f));
+            float targetWidth = Math.Max(Math.Min(440 * uiScale, width - 24), Math.Min(width - 24, bounds.Width * options.Width));
+            float targetHeight = Math.Max(Math.Min(300 * uiScale, height - 24), Math.Min(height - 24, bounds.Height * options.Height));
+            panelWidth = targetWidth / uiScale;
+            panelHeight = targetHeight / uiScale;
             window = new GComponent { name = "CesiumAndroid_Window", opaque = true };
             window.SetSize(panelWidth, panelHeight);
             window.SetScale(uiScale, uiScale);
             root.AddChild(window);
             Rounded(window, panelWidth, panelHeight, OverlayTheme.Background, 24, true);
             window.onTouchBegin.Add(BlockGestures);
-            Text(window, "功能助手", 26, 24, 18, panelWidth - 100, 36);
-            Text(window, "吉星工具箱", 16, 24, 54, panelWidth - 100, 24, OverlayTheme.Muted);
-            Button(window, "收起", "关闭侧边工具箱", panelWidth - 84, 22, 64, 46, Close);
-            notice = Text(window, "", 16, 24, panelHeight - 43, panelWidth - 48, 30, OverlayTheme.Muted);
+            notice = Text(window, "", 15, 120, panelHeight - 42, panelWidth - 168, 30, OverlayTheme.Muted);
             notice.name = "overlay.notice";
 
             float iconSize = Math.Max(56, Math.Min(100, Math.Min(width, height) * .09f));
@@ -120,6 +122,7 @@ namespace CesiumOverlayMod
                 icon.SetXY(presentation.FromRight ? width - iconSize - 12 : 12,
                     Mathf.Clamp(icon.y, 12, Math.Max(12, height - iconSize - 12)));
             });
+            AddResizeHandle();
             Render();
             Animate(Time.realtimeSinceStartup);
         }
@@ -164,14 +167,23 @@ namespace CesiumOverlayMod
         {
             if (window == null) return;
             float progress = presentation.Progress(now);
-            float physicalWidth = panelWidth * uiScale;
-            window.SetXY(presentation.FromRight
-                ? width + 12 - (physicalWidth + 24) * progress
-                : -physicalWidth - 12 + (physicalWidth + 24) * progress, 12);
-            window.alpha = .72f + .28f * progress;
-            window.visible = presentation.Open || progress > .001f;
-            window.touchable = presentation.Open;
-            icon.visible = !presentation.Open && progress <= .001f;
+            float visible = Mathf.Clamp01(progress);
+            float scale = .12f + .88f * progress;
+            float physicalWidth = resizing ? previewWidth : panelWidth * uiScale;
+            float physicalHeight = resizing ? previewHeight : panelHeight * uiScale;
+            float finalX = presentation.FromRight ? width - physicalWidth - 12 : 12;
+            float finalY = Mathf.Clamp(icon.y - physicalHeight * .15f, 12, Math.Max(12, height - physicalHeight - 12));
+            float collapsedX = presentation.FromRight ? icon.x + icon.width - physicalWidth * .12f : icon.x;
+            float collapsedY = icon.y;
+            window.SetScale(physicalWidth / panelWidth * scale, physicalHeight / panelHeight * scale);
+            window.SetXY(collapsedX + (finalX - collapsedX) * progress, collapsedY + (finalY - collapsedY) * progress);
+            window.alpha = options.Opacity * visible;
+            window.visible = presentation.Open || visible > .001f;
+            window.touchable = presentation.Open && visible >= .98f;
+            icon.alpha = options.Opacity * (1 - visible);
+            icon.visible = visible < .999f;
+            icon.touchable = !presentation.Open;
+
         }
 
         private void Close()
@@ -185,14 +197,13 @@ namespace CesiumOverlayMod
             if (window == null || !presentation.Open) return;
             var all = AndroidApi.GetModIds();
             var ids = new List<string>();
-            if (presentation.Tab == 1)
+            if (presentation.Tab > 0 && presentation.Tab <= options.Groups.Count)
             {
-                // User-defined order; unavailable mods are not represented by fake switches.
-                foreach (string wanted in ModCatalog.Functions)
-                    foreach (string id in all) if (string.Equals(id, wanted, StringComparison.OrdinalIgnoreCase)) { ids.Add(id); break; }
+                foreach (string wanted in options.Groups[presentation.Tab - 1].Mods)
+                    foreach (string id in all) if (string.Equals(id, wanted, StringComparison.OrdinalIgnoreCase) && id != "SpeedHackMod") { ids.Add(id); break; }
             }
-            else if (presentation.Tab == 2)
-                foreach (string id in all) if (!ModCatalog.IsFunction(id)) ids.Add(id);
+            else if (presentation.Tab != 0)
+                foreach (string id in all) if (id != "SpeedHackMod" && !options.Assigned(id)) ids.Add(id);
 
             if (presentation.Tab != 0 && presentation.Selected != null && !all.Contains(presentation.Selected)) presentation.Selected = null;
             string key = presentation.Tab + "|" + presentation.Selected + "|" + LocalSpeed.SelectedSpeed + "|" + AndroidApi.Notice;
@@ -206,37 +217,27 @@ namespace CesiumOverlayMod
                     if (action.IsToggle) try { key += ":" + action.Get(); } catch { key += ":unavailable"; }
                 }
             }
-            if (key == contentKey) return;
+            if (key == contentKey || resizing) return;
             contentKey = key;
             bool samePage = renderedTab == presentation.Tab && renderedSelection == presentation.Selected;
             float scroll = samePage && body != null && body.scrollPane != null ? body.scrollPane.posY : 0;
             if (body != null && !body.isDisposed) body.Dispose();
-            // The tabs are part of the disposable body so theme changes and selection share one render path.
-            var oldTabs = window.GetChild("overlay.tabs");
+            // Side navigation scrolls independently from mod content.
+            var oldTabs = window.GetChild("overlay.sidebar");
             if (oldTabs != null) oldTabs.Dispose();
-            var tabs = new GComponent { name = "overlay.tabs" };
-            tabs.SetXY(20, 91); tabs.SetSize(panelWidth - 40, 48); window.AddChild(tabs);
-            float tabWidth = (tabs.width - 8) / 3;
-            string[] labels = { "变速", "功能类", "其他类" };
-            for (int i = 0; i < labels.Length; i++)
-            {
-                int tab = i;
-                Button(tabs, labels[i], "overlay.tab." + i, i * (tabWidth + 4), 0, tabWidth, 48,
-                    () => { VirtualKeyboard.Instance?.Clear(); presentation.SelectTab(tab); contentKey = null; Render(); },
-                    presentation.Tab == i ? OverlayTheme.Selected : OverlayTheme.Panel,
-                    presentation.Tab == i ? OverlayTheme.Accent : OverlayTheme.Muted);
-            }
-            body = new OverlayScrollView(panelWidth - 40, Math.Max(1, panelHeight - 202));
+            RenderSidebar();
+            body = new OverlayScrollView(panelWidth - 132, Math.Max(1, panelHeight - 64));
             body.name = "overlay.content";
-            body.SetXY(20, 156); window.AddChild(body);
+            body.SetXY(120, 16); window.AddChild(body);
             if (presentation.Tab == 0) RenderSpeed();
             else if (presentation.Selected != null) RenderActions(presentation.Selected);
             else RenderList(ids);
+            window.SetChildIndex(window.GetChild("overlay.resize"), window.numChildren - 1);
             body.EnsureBoundsCorrect();
             body.scrollPane.SetPosY(scroll, false);
             renderedTab = presentation.Tab;
             renderedSelection = presentation.Selected;
-            notice.text = string.IsNullOrEmpty(AndroidApi.Notice) ? "关闭面板后继续游戏" : AndroidApi.Notice;
+            notice.text = string.IsNullOrEmpty(AndroidApi.Notice) ? "拖动底角调整大小" : AndroidApi.Notice;
         }
 
         private void RenderSpeed()

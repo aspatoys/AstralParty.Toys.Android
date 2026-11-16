@@ -7,10 +7,10 @@ namespace CesiumOverlayMod
     internal sealed class OverlayPresentation
     {
         internal const string SpeedId = "SpeedHackMod";
-        internal const float OpenDuration = .26f;
-        internal const float CloseDuration = .20f;
+        internal const float OpenDuration = .34f;
+        internal const float CloseDuration = .24f;
         internal string Selected = SpeedId;
-        internal int Tab; // 0: speed, 1: functions, 2: other mods
+        internal int Tab; // 0: speed, 1..N: user groups, N+1: unassigned mods
         internal bool Open { get; private set; }
         internal bool FromRight;
         private bool openedOnce;
@@ -31,7 +31,8 @@ namespace CesiumOverlayMod
         {
             if (duration <= 0) return to;
             float t = Math.Max(0, Math.Min(1, (now - started) / duration));
-            float eased = 1 - (1 - t) * (1 - t) * (1 - t);
+            float q = t - 1;
+            float eased = Open ? 1 + 1.6f * q * q * q + .6f * q * q : t * t * (3 - 2 * t);
             return from + (to - from) * eased;
         }
 

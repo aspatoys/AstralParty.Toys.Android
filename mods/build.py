@@ -61,7 +61,7 @@ if not args.overlay_only:
 shutil.copy2(overlay, target / overlay.name)
 shutil.copy2(ROOT / 'CesiumOverlayMod/overlay.png', target / 'overlay.png')
 (target / 'CesiumOverlayMod.json').write_text(json.dumps({
-    'id': 'CesiumOverlayMod', 'name': '吉星工具箱悬浮窗', 'version': '0.7.0',
+    'id': 'CesiumOverlayMod', 'name': '吉星工具箱悬浮窗', 'version': '0.8.0',
     'author': 'TenkinMori / Cesium Android adaptation',
     'description': '半屏侧边工具箱，首次打开变速页，中文功能分组与游戏内快捷开关。',
     'sdkVersion': '2.8.6', 'permissions': 141, 'dependencies': [],
