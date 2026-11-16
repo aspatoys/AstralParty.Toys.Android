@@ -5,6 +5,7 @@
 ## 功能
 
 - **模组市场**：默认地址 `https://forge.hiynet.com`，支持搜索、标签、排序；下载边下边校验 SHA-256，检查通过后直接写进加载器。
+- **卡牌自定义**：在「自定义 → 卡牌」导入 Win 版卡牌方案 ZIP、新建与编辑单卡、恢复原图、选择方案、导出到 Win 版；见 [卡牌方案说明](docs/card-customization.md)。
 - **已装模组**：列表、启用/停用、版本与依赖检查；每个模组可以改配置（表单或整段文本），保存后支持热重载的模组立即生效。
 - **模组设置**：字段说明取自模组自带的 `_comments`（简中/繁中/英文/日文），改值只改对应字节，注释与键顺序都会保留。
 - **加载器安装**：把引导注入游戏的热更缓存、投放 SDK 与内置模组，可一键还原原包；有 Root 时自动走 `su`，没有 Root 再用 Shizuku。
@@ -51,6 +52,10 @@ git tag v1.0.1 && git push origin v1.0.1
 
 - 加载器本体、SDK 与内置模组：[CesiumLoader](https://github.com/higashitaniyume/CesiumLoader)
 - 桌面版模组管理器：[AstralParty.Toys](https://github.com/higashitaniyume/AstralParty.Toys)
+
+## 正式签名
+
+1.2.0 沿用 1.1.2 的正式签名。验证证书、公钥和验证步骤见 [签名说明](docs/signing/README.md)。私钥不公开、不进入源码仓库。
 
 ## 许可
 

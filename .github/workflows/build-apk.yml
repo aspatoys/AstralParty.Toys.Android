@@ -213,6 +213,8 @@ jobs:
           sha256sum "aspatoys-${{ steps.version.outputs.name }}.apk" | awk '{print $1}' \
             > "aspatoys-${{ steps.version.outputs.name }}.apk.sha256"
           cat "aspatoys-${{ steps.version.outputs.name }}.apk.sha256"
+          cp docs/signing/production-certificate.pem aspatoys-signing-certificate.pem
+          cp docs/signing/production-public-key.pem aspatoys-signing-public-key.pem
           ls -l aspatoys-*.apk*
 
       - name: Verify signature
@@ -236,6 +238,8 @@ jobs:
           path: |
             aspatoys-${{ steps.version.outputs.name }}.apk
             aspatoys-${{ steps.version.outputs.name }}.apk.sha256
+            aspatoys-signing-certificate.pem
+            aspatoys-signing-public-key.pem
           if-no-files-found: error
 
       - name: Publish release
@@ -255,7 +259,7 @@ jobs:
               echo "资产 $apk 已存在，保持原样"
               exit 0
             fi
-            gh release upload "$tag" "$apk" "$apk.sha256" \
+            gh release upload "$tag" "$apk" "$apk.sha256" "aspatoys-signing-certificate.pem" "aspatoys-signing-public-key.pem" \
               --repo "${{ github.repository }}"
           else
             notes_args=()
@@ -264,7 +268,7 @@ jobs:
             else
               notes_args=(--generate-notes)
             fi
-            gh release create "$tag" "$apk" "$apk.sha256" \
+            gh release create "$tag" "$apk" "$apk.sha256" "aspatoys-signing-certificate.pem" "aspatoys-signing-public-key.pem" \
               --repo "${{ github.repository }}" \
               --title "Astral Party Toys Android ${{ steps.version.outputs.name }}" \
               "${notes_args[@]}" \

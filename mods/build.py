@@ -37,6 +37,9 @@ if args.tools:
     if not args.overlay_only:
         speed = compile_mod('SpeedHackMod', [sdk, overlay, args.refs / 'UnityEngine.CoreModule.dll'])
         camera = compile_mod('FreeCameraMod', [sdk, args.refs / 'UnityEngine.CoreModule.dll', args.refs / 'AstralParty.Runtime.dll'])
+        card = compile_mod('CardSkinMod', [sdk] + [args.refs / name for name in (
+            'UnityEngine.CoreModule.dll', 'AstralParty.Runtime.dll', 'UniTask.dll',
+            'Google.Protobuf.Runtime.dll')])
 else:
     project = 'CesiumOverlayMod' if args.overlay_only else 'SpeedHackMod'
     subprocess.run(['dotnet', 'build', str(ROOT / project), '-c', 'Release', '--nologo',
@@ -47,6 +50,8 @@ else:
         speed = ROOT / 'SpeedHackMod/bin/Release/netstandard2.0/SpeedHackMod.dll'
         subprocess.run(['dotnet', 'build', str(ROOT / 'FreeCameraMod'), '-c', 'Release', '--nologo', '-p:GameRefs=' + str(args.refs.resolve()), '-p:CesiumSdkDll=' + str(sdk.resolve())], check=True)
         camera = ROOT / 'FreeCameraMod/bin/Release/netstandard2.0/FreeCameraMod.dll'
+        subprocess.run(['dotnet', 'build', str(ROOT / 'CardSkinMod'), '-c', 'Release', '--nologo', '-p:GameRefs=' + str(args.refs.resolve()), '-p:CesiumSdkDll=' + str(sdk.resolve())], check=True)
+        card = ROOT / 'CardSkinMod/bin/Release/netstandard2.0/CardSkinMod.dll'
 
 staged = out / 'assets'
 target = staged / 'mods/CesiumOverlayMod'
@@ -90,5 +95,9 @@ if not args.overlay_only:
         'sdkVersion': '2.8.6', 'permissions': 97, 'dependencies': []
     }, ensure_ascii=False), encoding='utf-8')
     shutil.copytree(licenses, camera_target / 'licenses', dirs_exist_ok=True)
+    card_target = staged / 'mods/CardSkinMod'
+    card_target.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(card, card_target / 'CardSkinMod.dll')
+    shutil.copy2(ROOT / 'CardSkinMod/CardSkinMod.json', card_target / 'CardSkinMod.json')
 shutil.copytree(staged, assets, dirs_exist_ok=True)
 print('Bundled overlay only (existing API, speed adapter and camera retained).' if args.overlay_only else 'Bundled AndroidApi, overlay and panel-only speed adapter (official SDK retained).')
