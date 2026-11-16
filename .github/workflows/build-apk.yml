@@ -118,16 +118,18 @@ jobs:
           mkdir -p build/overlay-game-refs
           base="https://raw.githubusercontent.com/$LOADER_REPO/$LOADER_TAG/refs/game"
           curl -fsSL "$base/sources.json" -o build/overlay-game-refs/sources.json
-          for file in AstralParty.Runtime.dll UnityEngine.CoreModule.dll; do
+          # 按清单取全部程序集：卡面模组还要 UniTask 与 Google.Protobuf.Runtime，
+          # 只取两个核心程序集会让 CardSkinMod 编译失败。
+          while IFS= read -r file; do
             curl -fsSL "$base/$file" -o "build/overlay-game-refs/$file"
-          done
+          done < <(python3 -c "import json; print('\n'.join(json.load(open('build/overlay-game-refs/sources.json', encoding='utf-8'))['assemblies']))")
           python3 - <<'PY'
           from pathlib import Path
           import hashlib, json
           root = Path('build/overlay-game-refs')
-          hashes = json.loads((root / 'sources.json').read_text())['assemblies']
-          for name in ('AstralParty.Runtime.dll', 'UnityEngine.CoreModule.dll'):
-              assert hashlib.sha256((root / name).read_bytes()).hexdigest() == hashes[name], name
+          hashes = json.loads((root / 'sources.json').read_text(encoding='utf-8'))['assemblies']
+          for name, expected in hashes.items():
+              assert hashlib.sha256((root / name).read_bytes()).hexdigest() == expected, name
           PY
           python3 mods/build.py --refs build/overlay-game-refs --sdk "$LOADER_SDK"
 
