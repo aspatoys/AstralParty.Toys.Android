@@ -241,7 +241,8 @@ class LoaderInstaller(
         owner.reset()
         owner.requireDirectories(LOADER_ROOT)
         owner.requireOwned(LOADER_ROOT, recursive = true)
-        log("加载器目录属主已校验（${owner.ids()?.spec}）")
+        log(if (owner.isSupported()) "加载器目录属主已校验（${owner.ids()?.spec}）"
+            else "Shizuku 目录访问已校验；文件写入逐项核对 SHA-256，游戏加载结果需重启后确认")
     }
 
     /**

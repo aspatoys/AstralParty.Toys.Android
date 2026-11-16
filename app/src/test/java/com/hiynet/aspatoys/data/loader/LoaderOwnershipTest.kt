@@ -3,17 +3,24 @@ package com.hiynet.aspatoys.data.loader
 import com.hiynet.aspatoys.installer.LoaderOwnership
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 加载器文件的属主必须跟着游戏的 uid 走。
+ * Two channel shapes, two different invariants.
  *
- * 这不是洁癖：游戏私有目录是 `drwxr-s--- u0_a331 ext_data_rw`，组没有写权限，
- * 而游戏进程的 groups 里也没有 1078。属主一旦变成 root（`mv -f` 换成新 inode
- * 就会这样），游戏就再也读不到引导 DLL，注入进 `<Module>.cctor` 的那句
- * `File.ReadAllBytes` 抛异常又被 try/catch 吞掉 —— 「装好了但一个模组都不加载，
- * 日志也没有」就是这么来的。所以这里断言：写文件之后一定要把属主改回游戏。
+ * Root can `chown`, so it must still prove `st_uid == game uid` everywhere: a root-owned inode
+ * inside the game's tree is unreadable for the game and the failure is silent (the injected
+ * `<Module>.cctor` swallows the exception), which is why that check stays strict.
+ *
+ * A plain Shizuku channel (uid 2000) can never chown, so `st_uid` says nothing about whether the
+ * game can read the file. Device evidence from a 24129PN74C / Android 16: the boot log the game
+ * itself wrote reports `mods found: 24 / done: ok=24 failed=0` while every DLL it loaded was
+ * `2000 1078 660`. So on that channel the only honest checks are "the channel can reach the path"
+ * (probed with `test -r` / `test -x`) and "the bytes we wrote are the bytes on disk" (SHA-256,
+ * enforced by the transport). Neither of those may be reported as proof that the game loaded them.
  */
 class LoaderOwnershipTest {
 
@@ -29,7 +36,7 @@ class LoaderOwnershipTest {
         assertTrue("missing/unreadable bootstrap must fail", owner.verify(listOf("/sdcard/Android/data/com.feimo.astralparty/files/CesiumLoader/bootstrap/x.dll")) != null)
     }
 
-    private class RecordingExec(private val uid: Int = 0) {
+    private class RecordingExec(private val uid: Int = 0, private val accessible: Boolean = true) {
         val commands = mutableListOf<String>()
 
         fun run(script: String): String {
@@ -38,12 +45,15 @@ class LoaderOwnershipTest {
                 script.startsWith("id -u") -> uid.toString()
                 script.startsWith("stat -c '%u %g'") -> "10331 1078"
                 script.startsWith("stat -c %u") -> "10331"
+                script.startsWith("if [ -d ") -> if (accessible) "accessible" else ""
                 else -> ""
             }
         }
 
         fun chowns() = commands.filter { it.startsWith("chown ") }
     }
+
+    // ---- root channel: unchanged, strict ----
 
     @Test
     fun rootChannelResolvesGameIdsFromTheDataDirectory() {
@@ -53,17 +63,6 @@ class LoaderOwnershipTest {
         assertEquals(LoaderOwnership.Ids(10331, 1078), owner.ids())
         assertTrue(owner.isSupported())
         assertTrue(exec.commands.any { it.contains("/sdcard/Android/data/com.feimo.astralparty") })
-    }
-
-    @Test
-    fun shellChannelCannotChownAndSaysSo() {
-        val exec = RecordingExec(uid = 2000)
-        val owner = LoaderOwnership(exec = exec::run)
-
-        assertFalse(owner.isSupported())
-        assertEquals(LoaderOwnership.Ids(10331, 1078), owner.ids())
-        assertFalse(owner.adopt("/sdcard/Android/data/com.feimo.astralparty/files/CesiumLoader/x.dll"))
-        assertTrue(exec.chowns().isEmpty())
     }
 
     @Test
@@ -122,7 +121,7 @@ class LoaderOwnershipTest {
         val exec = RecordingExec()
         val owner = LoaderOwnership(exec = exec::run)
 
-        assertEquals(null, owner.verify(listOf("/sdcard/Android/data/com.feimo.astralparty/files/CesiumLoader/bootstrap/x.dll")))
+        assertNull(owner.verify(listOf("/sdcard/Android/data/com.feimo.astralparty/files/CesiumLoader/bootstrap/x.dll")))
     }
 
     @Test
@@ -172,7 +171,7 @@ class LoaderOwnershipTest {
                 else -> ""
             }
         })
-        org.junit.Assert.assertThrows(IllegalStateException::class.java) { owner.requireOwned("/game/file") }
+        assertThrows(IllegalStateException::class.java) { owner.requireOwned("/game/file") }
     }
 
     @Test
@@ -186,6 +185,72 @@ class LoaderOwnershipTest {
                 else -> ""
             }
         })
-        org.junit.Assert.assertThrows(IllegalStateException::class.java) { owner.requireOwned("/game/tree", true) }
+        assertThrows(IllegalStateException::class.java) { owner.requireOwned("/game/tree", true) }
+    }
+
+    // ---- non-root channel: no chown, access probe instead of st_uid ----
+
+    @Test
+    fun shellChannelCannotChownAndSaysSo() {
+        val exec = RecordingExec(uid = 2000)
+        val owner = LoaderOwnership(exec = exec::run)
+
+        assertFalse(owner.isSupported())
+        assertEquals(LoaderOwnership.Ids(10331, 1078), owner.ids())
+        assertFalse(owner.adopt("/sdcard/Android/data/com.feimo.astralparty/files/CesiumLoader/x.dll"))
+        assertTrue(exec.chowns().isEmpty())
+    }
+
+    @Test
+    fun shellOwnedFilesThatTheChannelCanReachPassVerification() {
+        val exec = RecordingExec(uid = 2000)
+        val owner = LoaderOwnership(exec = exec::run)
+
+        // Devicetruth: these carry st_uid 2000 and the game still reads them.
+        assertNull(
+            owner.verify(
+                listOf(
+                    "/sdcard/Android/data/com.feimo.astralparty/files/CesiumLoader/bootstrap/x.dll",
+                    "/sdcard/Android/data/com.feimo.astralparty/files/CesiumLoader/mods",
+                ),
+            ),
+        )
+        assertTrue("non-root must not attempt chown", exec.chowns().isEmpty())
+    }
+
+    @Test
+    fun nonRootRequireOwnedPassesWithoutChownWhenPathIsReachable() {
+        val exec = RecordingExec(uid = 2000)
+        val owner = LoaderOwnership(exec = exec::run)
+
+        // Must not throw: this is the exact call that used to abort every non-root install.
+        owner.requireOwned("/sdcard/Android/data/com.feimo.astralparty/files/CesiumLoader/bootstrap/x.dll")
+        owner.requireOwned("/sdcard/Android/data/com.feimo.astralparty/files/CesiumLoader", recursive = true)
+
+        assertTrue(exec.chowns().isEmpty())
+        assertTrue(exec.commands.any { it.startsWith("if [ -d ") })
+    }
+
+    @Test
+    fun nonRootUnreachablePathFailsVerification() {
+        val exec = RecordingExec(uid = 2000, accessible = false)
+        val owner = LoaderOwnership(exec = exec::run)
+
+        val problem = owner.verify(listOf("/sdcard/Android/data/com.feimo.astralparty/files/CesiumLoader/mods"))
+        assertTrue("unreachable path must be reported", problem!!.contains("Shizuku 无法访问路径"))
+        assertThrows(IllegalStateException::class.java) {
+            owner.requireOwned("/sdcard/Android/data/com.feimo.astralparty/files/CesiumLoader/mods")
+        }
+    }
+
+    @Test
+    fun nonRootMustNotClaimTheGameCanReadTheFiles() {
+        val owner = LoaderOwnership(exec = RecordingExec(uid = 2000)::run)
+
+        // A channel-side probe proves reachability only; it must never emit wording that claims
+        // the game loaded anything (that is only provable from the game's own boot log).
+        val problem = owner.verify(listOf("/sdcard/Android/data/com.feimo.astralparty/files/CesiumLoader/mods"))
+        assertNull(problem)
+        assertFalse(owner.isSupported())
     }
 }

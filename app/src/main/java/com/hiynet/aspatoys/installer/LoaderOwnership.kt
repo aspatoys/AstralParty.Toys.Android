@@ -94,6 +94,7 @@ class LoaderOwnership(
      * @return 有问题时返回一句可读的说明；全部正常返回 null。
      */
     fun verify(paths: List<String>): String? {
+        if (!isSupported()) return verifyAccess(paths)
         val ids = ids() ?: return if (isSupported()) {
             "读不到游戏 uid，无法确认加载器可读"
         } else {
@@ -120,6 +121,13 @@ class LoaderOwnership(
     }
 
     private fun requirePaths(paths: List<String>, recursive: Boolean = false) {
+        if (!isSupported()) {
+            val problem = verifyAccess(paths)
+            check(problem == null) { problem!! }
+            // Storage ACL/FUSE access cannot be inferred from st_uid. Actual writes and
+            // content hashes are checked by the transport; game readability needs a boot log.
+            return
+        }
         if (isSupported()) {
             check(adopt(paths, recursive)) {
                 "文件属主修复失败：${lastError ?: paths.first()}"
@@ -138,6 +146,17 @@ class LoaderOwnership(
                 "加载器目录仍有属主异常，未通过安装校验：${paths.first()}"
             }
         }
+    }
+
+    private fun verifyAccess(paths: List<String>): String? {
+        for (path in paths) {
+            val quoted = ShizukuShell.quote(path)
+            val result = runCatching {
+                exec("if [ -d $quoted ]; then test -r $quoted && test -x $quoted; else test -f $quoted && test -r $quoted; fi && echo accessible")
+            }.getOrNull()?.trim()
+            if (result != "accessible") return "Shizuku 无法访问路径：$path；请检查授权及系统存储限制"
+        }
+        return null
     }
 
     /** mkdir -p may create several ancestors. Repair only this game's files hierarchy. */

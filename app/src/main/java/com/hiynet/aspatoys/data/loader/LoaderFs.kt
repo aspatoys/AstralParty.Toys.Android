@@ -110,11 +110,19 @@ class ShizukuLoaderFs(
     private fun writeAtomic(remotePath: String, source: java.io.InputStream) {
         val temp = "$remotePath.cesium-tmp"
         try {
-            writeStream("cat > " + q(temp), source)
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            writeStream("cat > " + q(temp), java.security.DigestInputStream(source, digest))
+            val expected = digest.digest().joinToString("") { "%02x".format(it) }
+            fun verifyHash(path: String) {
+                val actual = exec("sha256sum " + q(path)).trim().substringBefore(' ').lowercase()
+                check(actual == expected) { "文件写入校验失败：$path" }
+            }
+            verifyHash(temp)
             owner.requireDirectories(remotePath.substringBeforeLast('/'))
             owner.requireOwned(temp)
             exec("mv -f " + q(temp) + " " + q(remotePath))
             owner.requireOwned(remotePath)
+            verifyHash(remotePath)
         } catch (error: Throwable) {
             runCatching { exec("rm -f " + q(temp)) }
             throw error
