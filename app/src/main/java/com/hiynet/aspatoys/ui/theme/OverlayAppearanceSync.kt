@@ -35,7 +35,10 @@ fun OverlayAppearanceSync(settings: AppSettings) {
     val permission = ShizukuShell.permissionVersion
     LaunchedEffect(mode, systemDark, root, permission, resumed) {
         withContext(Dispatchers.IO) {
-            runCatching { overlay.syncAppearance(root, mode, systemDark) }
+            runCatching {
+                overlay.syncAppearance(root, mode, systemDark)
+                com.hiynet.aspatoys.data.settings.OverlayOptionsStore(context).sync(root)
+            }
                 .onFailure { android.util.Log.w("ToysOverlay", "主题同步失败，下次连接或安装时重试", it) }
         }
     }

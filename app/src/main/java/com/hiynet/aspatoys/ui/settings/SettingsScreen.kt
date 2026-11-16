@@ -81,6 +81,7 @@ enum class SettingsSection(
     val iconRes: Int,
 ) {
     APPEARANCE("外观", "主题模式与显示效果", R.drawable.ic_settings_theme),
+    OVERLAY("悬浮窗", "分组、透明度与窗口大小", R.drawable.ic_nav_mods),
     BACKGROUND("背景", "自定义应用背景图", R.drawable.ic_settings_wallpaper),
     MARKET("市场", "模组市场地址与免责声明", R.drawable.ic_nav_market),
     LANGUAGE("语言", "界面与市场展示语言", R.drawable.ic_settings_language),
@@ -241,6 +242,7 @@ private fun getSectionSummary(
         ThemeMode.LIGHT -> "明亮模式"
         ThemeMode.DARK -> "暗黑模式"
     }
+    SettingsSection.OVERLAY -> "自定义侧栏分组与显示大小"
     SettingsSection.BACKGROUND -> if (settings.backgroundImage.isEmpty()) "默认背景" else "自选背景"
     SettingsSection.MARKET -> {
         val host = settings.marketBaseUrl.removePrefix("https://").removePrefix("http://")
@@ -379,6 +381,8 @@ private fun SettingsDetailView(
                     }
                 }
             }
+
+            SettingsSection.OVERLAY -> { OverlaySettings(settings) }
 
             SettingsSection.BACKGROUND -> {
                 ToysSection("应用背景") {
