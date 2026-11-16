@@ -22,14 +22,6 @@ namespace CesiumOverlayMod
                 AndroidApi.RegisterButton(current.ModId, "toys.status", "运行状态", () => AndroidApi.ShowNotice(ModCatalog.Name(current.ModId) + "：" + current.State));
                 var changed = instance?.GetType().GetMethod("OnConfigChanged");
                 string key = current.Config.Has("enabled") ? "enabled" : current.Config.Has("Enabled") ? "Enabled" : null;
-                if (current.ModId == "HideHudMod")
-                {
-                    if (HudVisibility.CanUse(instance))
-                        AndroidApi.RegisterToggle(current.ModId, "toys.hud.hidden", "隐藏 HUD", () => HudVisibility.Get(instance),
-                            value => HudVisibility.Set(instance, value));
-                    // This mod's enabled flag only enables its keyboard listener, not HUD hiding.
-                    continue;
-                }
                 if (key != null && changed != null && changed.DeclaringType != typeof(ModBase))
                     AndroidApi.RegisterToggle(current.ModId, "toys.enabled", "模组总开关", () => current.Config.GetBool(key, true), value =>
                     {

@@ -12,7 +12,7 @@ using FairyGUI;
 using FairyGUI.Utils;
 using UnityEngine;
 
-[assembly: ModManifest("Cesium 安卓悬浮窗", "0.6.0", "TenkinMori / Android adaptation", "半屏侧边工具箱、中文分组与变速面板", Permissions = ModPermission.ReadGameState | ModPermission.UI | ModPermission.FileWrite | ModPermission.SpeedHack)]
+[assembly: ModManifest("Cesium 安卓悬浮窗", "0.7.0", "TenkinMori / Android adaptation", "半屏侧边工具箱、中文分组与变速面板", Permissions = ModPermission.ReadGameState | ModPermission.UI | ModPermission.FileWrite | ModPermission.SpeedHack)]
 namespace CesiumOverlayMod
 {
     public static class ModEntry
@@ -20,7 +20,7 @@ namespace CesiumOverlayMod
         public static void Main() { ModBase.Run(new OverlayController(), tag: "CesiumOverlay"); }
     }
 
-    public sealed class OverlayController : ModBase
+    public sealed partial class OverlayController : ModBase
     {
         private readonly OverlayPresentation presentation = new OverlayPresentation();
         private GComponent root, window, icon, body;
@@ -33,10 +33,11 @@ namespace CesiumOverlayMod
         private string renderedSelection;
 
         public override string Name => "Cesium 安卓悬浮窗";
-        public override string Version => "0.6.0";
+        public override string Version => "0.7.0";
         public override void OnLoad() { SpeedPanel.BeginSession(); }
         public override void OnInitialize()
         {
+            VirtualKeyboard.Install();
             SpeedPanel.BeginSession();
             AndroidApi.RegisterMod("CesiumOverlayMod", "工具箱信息");
             Log.Info("半屏侧边工具箱：首次打开变速页，功能类与其他类分组。");
@@ -44,6 +45,7 @@ namespace CesiumOverlayMod
 
         public override void OnUpdate()
         {
+            VirtualKeyboard.Instance?.Tick();
             float now = Time.realtimeSinceStartup;
             if (now >= nextTheme)
             {
@@ -69,6 +71,7 @@ namespace CesiumOverlayMod
 
         private void Build()
         {
+            VirtualKeyboard.Instance?.Clear();
             float iconY = icon == null ? GRoot.inst.height * .16f : icon.y;
             if (root != null && !root.isDisposed) root.Dispose();
             contentKey = null;
@@ -173,6 +176,7 @@ namespace CesiumOverlayMod
 
         private void Close()
         {
+            VirtualKeyboard.Instance?.Clear();
             if (presentation.Open) presentation.Toggle(Time.realtimeSinceStartup);
         }
 
@@ -192,6 +196,7 @@ namespace CesiumOverlayMod
 
             if (presentation.Tab != 0 && presentation.Selected != null && !all.Contains(presentation.Selected)) presentation.Selected = null;
             string key = presentation.Tab + "|" + presentation.Selected + "|" + LocalSpeed.SelectedSpeed + "|" + AndroidApi.Notice;
+            key += MappingSignature(presentation.Selected);
             foreach (string id in ids)
             {
                 key += "|" + id + "|" + AndroidApi.GetModName(id) + "|" + StateLabel(id);
@@ -217,7 +222,7 @@ namespace CesiumOverlayMod
             {
                 int tab = i;
                 Button(tabs, labels[i], "overlay.tab." + i, i * (tabWidth + 4), 0, tabWidth, 48,
-                    () => { presentation.SelectTab(tab); contentKey = null; Render(); },
+                    () => { VirtualKeyboard.Instance?.Clear(); presentation.SelectTab(tab); contentKey = null; Render(); },
                     presentation.Tab == i ? OverlayTheme.Selected : OverlayTheme.Panel,
                     presentation.Tab == i ? OverlayTheme.Accent : OverlayTheme.Muted);
             }
@@ -300,6 +305,7 @@ namespace CesiumOverlayMod
 
         private void OpenMod(string id)
         {
+            VirtualKeyboard.Instance?.Clear();
             if (string.Equals(id, OverlayPresentation.SpeedId, StringComparison.OrdinalIgnoreCase)) presentation.SelectTab(0);
             else presentation.Selected = id;
             contentKey = null; Render();
@@ -307,7 +313,7 @@ namespace CesiumOverlayMod
 
         private void RenderActions(string id)
         {
-            Button(body, "‹ 返回列表", "actions.back", 0, 0, 150, 46, () => { presentation.Selected = null; contentKey = null; Render(); });
+            Button(body, "‹ 返回列表", "actions.back", 0, 0, 150, 46, () => { VirtualKeyboard.Instance?.Clear(); presentation.Selected = null; contentKey = null; Render(); });
             Text(body, ModCatalog.Name(id, AndroidApi.GetModName(id)), 28, 4, 68, body.width - 8, 42);
             Text(body, ModCatalog.Description(id), 18, 4, 112, body.width - 8, 54, OverlayTheme.Muted);
             float y = 182;
@@ -320,19 +326,20 @@ namespace CesiumOverlayMod
                 if (action.IsToggle) try { value = action.Get(); } catch { available = false; }
                 string label = item.Id == "toys.enabled" ? "功能开关" : ModCatalog.ActionName(item.Label, item.IsToggle);
                 var row = Button(body, "", "action." + item.Id, 0, y, body.width, 70,
-                    () => Run(() => { if (action.IsToggle) action.Set(!action.Get()); else action.Run?.Invoke(); }));
+                    () => Run(() => { VirtualKeyboard.Instance?.Clear(); if (action.IsToggle) action.Set(!action.Get()); else action.Run?.Invoke(); }));
                 row.touchable = available;
                 Text(row, label, 23, 16, 14, body.width - 140, 42);
                 Text(row, !available ? "暂不可用" : action.IsToggle ? (value ? "已开启" : "已关闭") : "执行  ›",
                     20, body.width - 116, 14, 102, 42, value ? OverlayTheme.Accent : OverlayTheme.Muted, true);
                 y += 82; count++;
             }
-            if (count == 0)
+            if (count == 0 && !CanMap(id))
             {
                 Text(body, "暂无可即时调整的操作", 22, 6, y, body.width - 12, 40);
                 Text(body, "如需修改此模组配置，请在工具箱 App 中设置。", 18, 6, y + 48, body.width - 12, 64, OverlayTheme.Muted);
                 y += 126;
             }
+            y = RenderKeyMappings(id, y);
             Text(body, "状态：" + StateLabel(id), 18, 6, y + 8, body.width - 12, 40, OverlayTheme.Muted);
         }
 
@@ -409,9 +416,10 @@ namespace CesiumOverlayMod
             return button;
         }
 
-        public override void OnLateUpdate() { LocalSpeed.Tick(); HudVisibility.Tick(); }
+        public override void OnLateUpdate() { LocalSpeed.Tick(); }
         public override void OnUnload()
         {
+            VirtualKeyboard.Uninstall();
             LocalSpeed.Restore();
             HudVisibility.Restore();
             if (root != null && !root.isDisposed) root.Dispose();
