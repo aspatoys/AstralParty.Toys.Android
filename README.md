@@ -44,7 +44,7 @@ dotnet build loader/managed/CesiumLoader.Android.Bootstrap -c Release
 git tag v1.0.1 && git push origin v1.0.1
 ```
 
-工作流会取 CesiumLoader 的最新发行版作为随包加载器，构建 APK 并作为 GitHub Release（Latest）发布；分支推送与 PR 只上传构建产物，不发版。`versionName` 取自标签，`versionCode` 递增，覆盖安装即可升级。
+工作流会取工作流中固定版本的 CesiumLoader 发行包作为随包加载器，构建 APK 并作为 GitHub Release（Latest）发布；分支推送与 PR 只上传构建产物，不发版。`versionName` 取自标签，`versionCode` 递增，覆盖安装即可升级。
 
 游戏热更后，注入产物需要重新生成并替换仓库 `payload` 发行版里的 `AstralParty.Runtime.injected.dll`，下一次打标签就会带进 APK。
 
@@ -55,7 +55,7 @@ git tag v1.0.1 && git push origin v1.0.1
 
 ## 正式签名
 
-1.2.0 沿用 1.1.2 的正式签名。验证证书、公钥和验证步骤见 [签名说明](docs/signing/README.md)。私钥不公开、不进入源码仓库。
+自 1.1.2 起沿用同一张正式签名证书。验证证书、公钥和验证步骤见 [签名说明](docs/signing/README.md)。私钥不公开、不进入源码仓库。
 
 ## 许可
 

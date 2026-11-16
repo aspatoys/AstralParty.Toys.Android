@@ -1,6 +1,6 @@
 # 验证 Android 正式发行签名
 
-1.2.0 沿用 1.1.2 的正式发行私钥，支持从 1.1.2 覆盖升级。这里公开的是验证证书和公钥，不包含私钥，不能用于伪造发行包。
+自 1.1.2 起沿用同一张正式发行私钥，支持从 1.1.2 覆盖升级。这里公开的是验证证书和公钥，不包含私钥，不能用于伪造发行包。
 
 - `production-certificate.pem`：X.509 证书，PEM 格式。
 - `production-certificate.der`：同一证书，DER 格式。
@@ -10,7 +10,7 @@
 使用 Android SDK Build Tools 的 `apksigner` 验证实际 APK：
 
 ```sh
-apksigner verify --verbose --print-certs aspatoys-1.2.0.apk
+apksigner verify --verbose --print-certs aspatoys-1.2.1.apk
 ```
 
 命令必须成功，且输出的 `certificate SHA-256 digest` 与上面一致。新版工具可能显示 `V2 Signer`，旧版显示 `Signer #1`，以证书指纹为准。
