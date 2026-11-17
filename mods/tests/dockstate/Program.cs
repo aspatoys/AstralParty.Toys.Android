@@ -130,6 +130,19 @@ namespace CesiumOverlayMod
             Assert(!res3.Suspended, "Choose(3): clears suspended");
             Assert(Math.Abs(cur3 - 3.0) < 0.001, "Choose(3): applied 3");
 
+            Section("SpeedResumeState: Choose(3) then Choose(1) keeps 3 restorable");
+            var res6 = new SpeedResumeState();
+            double cur6 = 1.0;
+            Action<double> apply6 = v => cur6 = v;
+            res6.Choose(3.0, apply6);
+            res6.Choose(1.0, apply6);
+            Assert(Math.Abs(cur6 - 1.0) < 0.001, "Choose(1): applied 1");
+            Assert(Math.Abs(res6.Saved - 3.0) < 0.001, "Choose(1): Saved still 3");
+            Assert(res6.Suspended, "Choose(1): suspended while Saved > 1");
+            res6.Toggle(1.0, apply6);
+            Assert(Math.Abs(cur6 - 3.0) < 0.001, "Toggle after Choose(1): applied 3");
+            Assert(!res6.Suspended, "Toggle after Choose(1): not suspended");
+
             Section("SpeedResumeState: apply exception propagates");
             var res4 = new SpeedResumeState();
             double cur4 = 1.0;

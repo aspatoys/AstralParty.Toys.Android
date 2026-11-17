@@ -73,27 +73,26 @@ namespace CesiumOverlayMod
             current.PreviousSpeed = OverlayOptions.Clamp(value, 1f, 10f, 1f));
 
         /// <summary>
-        /// Applies a speed while remembering the last non-default one, so 恢复倍速 can come back
-        /// to it after the user drops to 1.0x.
+        /// Applies a speed, then remembers the last successful non-default multiplier.
+        /// Choosing 1.0x keeps the shared session memory for the resume action.
         /// </summary>
         private void SetSpeed(double target)
         {
-            double current = LocalSpeed.SelectedSpeed;
-            if (current > 1.0001 && Mathf.Abs((float)(current - target)) > .0001f)
-            {
-                float remember = Mathf.Clamp((float)current, 1f, 10f);
-                if (Mathf.Abs(Options.PreviousSpeed - remember) > .0001f) SavePreviousSpeed(remember);
-            }
             // Go through the shared panel entry so the loader-side speed state stays in sync.
             SpeedPanel.Choose(target);
+            float remember = (float)SpeedPanel.SavedSpeed;
+            if (remember > 1.0001f && Mathf.Abs(Options.PreviousSpeed - remember) > .0001f)
+                SavePreviousSpeed(remember);
         }
 
-        /// <summary>Jumps back to the speed that was in use before the current 1.0x.</summary>
+        /// <summary>Restores original speed, or resumes the latest successful multiplier.</summary>
         private void RestoreSpeed()
         {
-            float target = Mathf.Clamp(Options.PreviousSpeed, 1f, 10f);
+            if (LocalSpeed.SelectedSpeed > 1.0001) { SetSpeed(1); return; }
+            float target = SpeedPanel.SavedSpeed > 1.0001 ? (float)SpeedPanel.SavedSpeed
+                : Mathf.Clamp(Options.PreviousSpeed, 1f, 10f);
             if (target <= 1.0001f) { AndroidApi.ShowNotice("还没有可恢复的倍速"); return; }
-            SpeedPanel.Choose(target);
+            SetSpeed(target);
         }
 
         /// <summary>Remembers where the bar sits so reopening does not jump back to the default.</summary>
@@ -267,15 +266,19 @@ namespace CesiumOverlayMod
             }
             y += Px(56);
 
-            // One tap back to whatever speed was running before the current 1.0x.
-            float remembered = Mathf.Clamp(Options.PreviousSpeed, 1f, 10f);
-            bool canRestore = remembered > 1.0001f
-                && Mathf.Abs((float)LocalSpeed.SelectedSpeed - 1f) < .01f;
-            var restore = Button(body, "恢复倍速" + (remembered > 1.0001f ? "  " + remembered.ToString("0.#", CultureInfo.InvariantCulture) + "x" : ""),
+            // The label describes the next action; active acceleration must remain clickable.
+            float remembered = SpeedPanel.SavedSpeed > 1.0001 ? (float)SpeedPanel.SavedSpeed
+                : Mathf.Clamp(Options.PreviousSpeed, 1f, 10f);
+            bool accelerated = LocalSpeed.SelectedSpeed > 1.0001;
+            bool canRestore = accelerated || remembered > 1.0001f;
+            string restoreLabel = accelerated ? "恢复原速（1.0x）" : "启用原变速" +
+                (remembered > 1.0001f ? "（" + remembered.ToString("0.#", CultureInfo.InvariantCulture) + "x）" : "");
+            var restore = Button(body, restoreLabel,
                 "speed.restore", 0, y, w, Px(44),
                 () => Run(RestoreSpeed),
                 canRestore ? OverlayTheme.Primary : OverlayTheme.SurfaceContainerHigh,
                 canRestore ? OverlayTheme.OnPrimary : OverlayTheme.OnSurfaceVariant);
+            restore.touchable = canRestore;
             if (!canRestore) restore.alpha = .55f;
             y += Px(56);
 
