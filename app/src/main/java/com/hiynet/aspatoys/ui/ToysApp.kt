@@ -101,6 +101,7 @@ fun ToysApp() {
     val mods = remember { ModsController(container, scope, appContext) }
     val installer = remember { LoaderInstaller(appContext) }
     val cards = remember { CardCustomizationController(container, scope, appContext) }
+    com.hiynet.aspatoys.ui.settings.UpdateAutomation()
     OverlayAppearanceSync(container.settings)
 
     var destination by rememberSaveable { mutableStateOf(Destination.MODS) }

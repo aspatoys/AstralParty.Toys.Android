@@ -28,10 +28,12 @@ object Http {
         readTimeoutMs: Int = 20_000,
         maxRedirects: Int = 8,
         cancellation: HttpCancellation? = null,
+        requireHttps: Boolean = false,
     ): HttpResource {
         var current = url
         repeat(maxRedirects + 1) { attempt ->
             cancellation?.throwIfCancelled()
+            require(!requireHttps || URL(current).protocol == "https") { "更新连接不允许降级为 HTTP。" }
             val connection = (URL(current).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 instanceFollowRedirects = false
