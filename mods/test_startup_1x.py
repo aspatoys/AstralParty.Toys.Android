@@ -35,6 +35,7 @@ sources = [
     root / 'CesiumOverlayMod/HudVisibility.cs',
     root / 'CesiumOverlayMod/LocalSpeed.cs',
     root / 'CesiumOverlayMod/SpeedPanel.cs',
+    root / 'CesiumOverlayMod/DockState.cs',
     root / 'SpeedHackMod/ModEntry.cs',
 ]
 missing = [str(path) for path in sources if not path.exists()]

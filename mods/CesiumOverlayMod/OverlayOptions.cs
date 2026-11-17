@@ -13,7 +13,7 @@ namespace CesiumOverlayMod
     /// <summary>Wire-compatible with the APK; parsing is independent of Unity and file IO.</summary>
     internal sealed class OverlayOptions
     {
-        internal float Opacity = .94f, Width = 1, Height = 1;
+        internal float Opacity = .5f, Width = 1, Height = 1;
         internal readonly List<OverlayGroup> Groups = new List<OverlayGroup>();
         internal static OverlayOptions Defaults()
         {
@@ -49,7 +49,7 @@ namespace CesiumOverlayMod
                 int at = line.IndexOf('='); if (at < 0) continue;
                 string key = line.Substring(0, at), data = line.Substring(at + 1);
                 float number;
-                if (key == "opacity") value.Opacity = float.TryParse(data, NumberStyles.Float, CultureInfo.InvariantCulture, out number) ? Clamp(number, .25f, 1, .94f) : .94f;
+                if (key == "opacity") value.Opacity = float.TryParse(data, NumberStyles.Float, CultureInfo.InvariantCulture, out number) ? Clamp(number, .25f, 1, .5f) : .5f;
                 if (key == "width") value.Width = float.TryParse(data, NumberStyles.Float, CultureInfo.InvariantCulture, out number) ? Clamp(number, .65f, 1.6f, 1) : 1;
                 if (key == "height") value.Height = float.TryParse(data, NumberStyles.Float, CultureInfo.InvariantCulture, out number) ? Clamp(number, .65f, 1.6f, 1) : 1;
                 if (key != "group" || value.Groups.Count >= 8) continue;

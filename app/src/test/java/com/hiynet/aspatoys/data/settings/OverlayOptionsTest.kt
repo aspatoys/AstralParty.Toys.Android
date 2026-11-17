@@ -11,14 +11,14 @@ class OverlayOptionsTest {
 
     // ─── normalized() clamping ────────────────────────────────────────────────
 
-    @Test fun `opacity NaN returns fallback 0_94`() {
+    @Test fun `opacity NaN returns fallback 0_50`() {
         val o = OverlayOptions(opacity = Float.NaN).normalized()
-        assertEquals(0.94f, o.opacity, 1e-5f)
+        assertEquals(0.5f, o.opacity, 1e-5f)
     }
 
-    @Test fun `opacity infinity returns fallback 0_94`() {
+    @Test fun `opacity infinity returns fallback 0_50`() {
         val o = OverlayOptions(opacity = Float.POSITIVE_INFINITY).normalized()
-        assertEquals(0.94f, o.opacity, 1e-5f)
+        assertEquals(0.5f, o.opacity, 1e-5f)
     }
 
     @Test fun `opacity coerces below 0_25`() {
@@ -129,11 +129,11 @@ class OverlayOptionsTest {
 
     // ─── Wire format: NaN opacity in raw wire → fallback ─────────────────────
 
-    @Test fun `NaN opacity in raw wire text defaults to 0_94`() {
+    @Test fun `NaN opacity in raw wire text defaults to 0_50`() {
         val raw = "version=1\nopacity=NaN\nwidth=1\nheight=1\n"
         val decoded = OverlayOptions.decode(raw)
-        // toFloatOrNull on "NaN" returns Float.NaN; isFinite check → fallback .94
-        assertEquals(0.94f, decoded.opacity, 1e-4f)
+        // toFloatOrNull on "NaN" returns Float.NaN; isFinite check → fallback .5
+        assertEquals(0.5f, decoded.opacity, 1e-4f)
     }
 
     // ─── Defaults match C# Defaults() ────────────────────────────────────────

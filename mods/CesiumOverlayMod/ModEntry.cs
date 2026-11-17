@@ -12,7 +12,7 @@ using FairyGUI;
 using FairyGUI.Utils;
 using UnityEngine;
 
-[assembly: ModManifest("Cesium 安卓悬浮窗", "0.8.0", "TenkinMori / Android adaptation", "半屏侧边工具箱、中文分组与变速面板", Permissions = ModPermission.ReadGameState | ModPermission.UI | ModPermission.FileWrite | ModPermission.SpeedHack)]
+[assembly: ModManifest("Cesium 安卓悬浮窗", "0.9.0", "TenkinMori / Android adaptation", "独立侧栏、正方形主框与贴边圆形入口", Permissions = ModPermission.ReadGameState | ModPermission.UI | ModPermission.FileWrite | ModPermission.SpeedHack)]
 namespace CesiumOverlayMod
 {
     public static class ModEntry
@@ -23,6 +23,7 @@ namespace CesiumOverlayMod
     public sealed partial class OverlayController : ModBase
     {
         private readonly OverlayPresentation presentation = new OverlayPresentation();
+        private readonly OverlayMotion motion = new OverlayMotion();
         private GComponent root, window, icon, body;
         private NTexture iconTexture;
         private GTextField notice;
@@ -31,13 +32,15 @@ namespace CesiumOverlayMod
         private string contentKey;
         private int renderedTab = -1;
         private string renderedSelection;
+        private bool observingOutside;
 
         public override string Name => "Cesium 安卓悬浮窗";
-        public override string Version => "0.8.0";
+        public override string Version => "0.9.0";
         public override void OnLoad() { SpeedPanel.BeginSession(); }
         public override void OnInitialize()
         {
             VirtualKeyboard.Install();
+            dock.Wake(Time.realtimeSinceStartup);
             SpeedPanel.BeginSession();
             AndroidApi.RegisterMod("CesiumOverlayMod", "工具箱信息");
             Log.Info("半屏侧边工具箱：首次打开变速页，功能类与其他类分组。");
@@ -47,6 +50,11 @@ namespace CesiumOverlayMod
         {
             VirtualKeyboard.Instance?.Tick();
             float now = Time.realtimeSinceStartup;
+            if (!observingOutside && Stage.inst != null)
+            {
+                Stage.inst.onTouchBegin.Add(OnOutsideTouch);
+                observingOutside = true;
+            }
             if (now >= nextTheme)
             {
                 nextTheme = now + 1;
@@ -55,7 +63,8 @@ namespace CesiumOverlayMod
                 BuiltinActions.Refresh();
                 if (changed && GRoot.inst != null && root != null && !root.isDisposed) Build();
             }
-            if (!Application.isFocused && resizing) { resizing = false; resizeTouch = -1; if (GRoot.inst != null) Build(); }
+            if (!Application.isFocused && opacityDragging) { opacityDragging = false; opacityTouch = -1; contentKey = null; }
+            if (!Application.isFocused && (iconDragging || iconPressed)) { iconDragging = iconPressed = false; dock.Wake(now); }
             if (GRoot.inst == null) return;
             if (root == null || root.isDisposed || root.parent != GRoot.inst || width != GRoot.inst.width || height != GRoot.inst.height)
             {
@@ -73,7 +82,8 @@ namespace CesiumOverlayMod
 
         private void Build()
         {
-            resizing = false; resizeTouch = -1;
+            opacityDragging = false; opacityTouch = -1;
+            iconDragging = iconPressed = false;
             VirtualKeyboard.Instance?.Clear();
             float iconY = icon == null ? GRoot.inst.height * .16f : icon.y;
             if (root != null && !root.isDisposed) root.Dispose();
@@ -85,19 +95,16 @@ namespace CesiumOverlayMod
             root.SetSize(width, height);
             GRoot.inst.AddChild(root);
 
-            var bounds = OverlayPresentation.Bounds(width, height);
             uiScale = Math.Max(.4f, Math.Min(1.5f, Math.Min(width, height) / 600f));
-            float targetWidth = Math.Max(Math.Min(440 * uiScale, width - 24), Math.Min(width - 24, bounds.Width * options.Width));
-            float targetHeight = Math.Max(Math.Min(300 * uiScale, height - 24), Math.Min(height - 24, bounds.Height * options.Height));
-            panelWidth = targetWidth / uiScale;
-            panelHeight = targetHeight / uiScale;
+            var layout = DockLayout.Measure(width, height, uiScale, options.Width, presentation.FromRight, iconY);
+            panelWidth = panelHeight = layout.Side / uiScale;
             window = new GComponent { name = "CesiumAndroid_Window", opaque = true };
             window.SetSize(panelWidth, panelHeight);
             window.SetScale(uiScale, uiScale);
             root.AddChild(window);
-            Rounded(window, panelWidth, panelHeight, OverlayTheme.Background, 24, true);
+            Rounded(window, panelWidth, panelHeight, OverlayTheme.Background, 28, true);
             window.onTouchBegin.Add(BlockGestures);
-            notice = Text(window, "", 15, 120, panelHeight - 42, panelWidth - 168, 30, OverlayTheme.Muted);
+            notice = Text(window, "", 15, 18, panelHeight - 42, panelWidth - 36, 30, OverlayTheme.Muted);
             notice.name = "overlay.notice";
 
             float iconSize = Math.Max(56, Math.Min(100, Math.Min(width, height) * .09f));
@@ -106,23 +113,29 @@ namespace CesiumOverlayMod
             icon.SetXY(presentation.FromRight ? width - iconSize - 12 : 12,
                 Mathf.Clamp(iconY, 12, Math.Max(12, height - iconSize - 12)));
             root.AddChild(icon);
-            Rounded(icon, iconSize, iconSize, OverlayTheme.Panel, 20, true);
+            Rounded(icon, iconSize, iconSize, OverlayTheme.Panel, iconSize / 2, true);
             AddAvatar(iconSize);
+            RoundAvatar(iconSize);
+            icon.onTouchBegin.Add((EventContext context) => { iconPressed = true; dock.Wake(Time.realtimeSinceStartup); context.CaptureTouch(); });
+            icon.onTouchEnd.Add(() => { iconPressed = false; });
+            icon.onDragStart.Add(() => { iconDragging = true; dock.Wake(Time.realtimeSinceStartup); });
             icon.onTouchBegin.Add(BlockGestures);
             icon.onClick.Add(() =>
             {
+                dock.Wake(Time.realtimeSinceStartup);
                 presentation.Toggle(Time.realtimeSinceStartup);
+                motion.SetOpen(presentation.Open, Time.realtimeSinceStartup);
                 contentKey = null;
                 Render();
                 Animate(Time.realtimeSinceStartup);
             });
             icon.onDragEnd.Add(() =>
             {
+                iconDragging = false; dock.Wake(Time.realtimeSinceStartup);
                 presentation.FromRight = icon.x + iconSize / 2 > width / 2;
                 icon.SetXY(presentation.FromRight ? width - iconSize - 12 : 12,
                     Mathf.Clamp(icon.y, 12, Math.Max(12, height - iconSize - 12)));
             });
-            AddResizeHandle();
             Render();
             Animate(Time.realtimeSinceStartup);
         }
@@ -166,21 +179,33 @@ namespace CesiumOverlayMod
         private void Animate(float now)
         {
             if (window == null) return;
-            float progress = presentation.Progress(now);
-            float visible = Mathf.Clamp01(progress);
-            float scale = .12f + .88f * progress;
-            float physicalWidth = resizing ? previewWidth : panelWidth * uiScale;
-            float physicalHeight = resizing ? previewHeight : panelHeight * uiScale;
-            float finalX = presentation.FromRight ? width - physicalWidth - 12 : 12;
-            float finalY = Mathf.Clamp(icon.y - physicalHeight * .15f, 12, Math.Max(12, height - physicalHeight - 12));
-            float collapsedX = presentation.FromRight ? icon.x + icon.width - physicalWidth * .12f : icon.x;
-            float collapsedY = icon.y;
-            window.SetScale(physicalWidth / panelWidth * scale, physicalHeight / panelHeight * scale);
-            window.SetXY(collapsedX + (finalX - collapsedX) * progress, collapsedY + (finalY - collapsedY) * progress);
-            window.alpha = options.Opacity * visible;
-            window.visible = presentation.Open || visible > .001f;
-            window.touchable = presentation.Open && visible >= .98f;
-            icon.alpha = options.Opacity * (1 - visible);
+            float main = motion.Main(now), rail = motion.Rail(now);
+            float mainVisible = Mathf.Clamp01(main), railVisible = Mathf.Clamp01(rail);
+            float visible = Math.Max(mainVisible, railVisible);
+            float opacity = opacityDragging ? previewOpacity : options.Opacity;
+            var layout = DockLayout.Measure(width, height, uiScale, options.Width, presentation.FromRight, icon.y);
+            float towardEdge = presentation.FromRight ? 1 : -1;
+            window.SetScale(uiScale * (.92f + .08f * main), uiScale * (.92f + .08f * main));
+            window.SetXY(layout.MainX + towardEdge * 32 * uiScale * (1 - main), layout.Y + 8 * uiScale * (1 - main));
+            window.alpha = opacity * mainVisible;
+            window.visible = mainVisible > .001f;
+            window.touchable = presentation.Open && mainVisible >= .98f;
+            if (sidePanel != null && !sidePanel.isDisposed)
+            {
+                sidePanel.SetScale(uiScale, uiScale);
+                sidePanel.SetXY(layout.RailX + towardEdge * (layout.Rail + layout.Gap) * (1 - rail), layout.Y);
+                sidePanel.alpha = opacity * railVisible;
+                sidePanel.visible = railVisible > .001f;
+                sidePanel.touchable = presentation.Open && railVisible >= .98f;
+            }
+            float resting = iconDragging || presentation.Open ? 0 : dock.RestProgress(now);
+            if (!iconDragging && !iconPressed)
+            {
+                float awakeX = presentation.FromRight ? width - icon.width - 8 : 8;
+                float hiddenX = presentation.FromRight ? width - icon.width / 2 : -icon.width / 2;
+                icon.x = awakeX + (hiddenX - awakeX) * resting;
+            }
+            icon.alpha = (1 - visible) * (1 - .55f * resting);
             icon.visible = visible < .999f;
             icon.touchable = !presentation.Open;
 
@@ -189,7 +214,13 @@ namespace CesiumOverlayMod
         private void Close()
         {
             VirtualKeyboard.Instance?.Clear();
-            if (presentation.Open) presentation.Toggle(Time.realtimeSinceStartup);
+            opacityDragging = false; opacityTouch = -1;
+            if (presentation.Open)
+            {
+                presentation.Toggle(Time.realtimeSinceStartup);
+                motion.SetOpen(false, Time.realtimeSinceStartup);
+            }
+            dock.Wake(Time.realtimeSinceStartup);
         }
 
         private void Render()
@@ -202,12 +233,12 @@ namespace CesiumOverlayMod
                 foreach (string wanted in options.Groups[presentation.Tab - 1].Mods)
                     foreach (string id in all) if (string.Equals(id, wanted, StringComparison.OrdinalIgnoreCase) && id != "SpeedHackMod") { ids.Add(id); break; }
             }
-            else if (presentation.Tab != 0)
+            else if (presentation.Tab > 0)
                 foreach (string id in all) if (id != "SpeedHackMod" && !options.Assigned(id)) ids.Add(id);
 
             if (presentation.Tab != 0 && presentation.Selected != null && !all.Contains(presentation.Selected)) presentation.Selected = null;
             string key = presentation.Tab + "|" + presentation.Selected + "|" + LocalSpeed.SelectedSpeed + "|" + AndroidApi.Notice;
-            key += MappingSignature(presentation.Selected);
+            key += MappingSignature(presentation.Selected) + "|" + options.Opacity + "|" + SpeedPanel.Suspended;
             foreach (string id in ids)
             {
                 key += "|" + id + "|" + AndroidApi.GetModName(id) + "|" + StateLabel(id);
@@ -217,27 +248,26 @@ namespace CesiumOverlayMod
                     if (action.IsToggle) try { key += ":" + action.Get(); } catch { key += ":unavailable"; }
                 }
             }
-            if (key == contentKey || resizing) return;
+            if (key == contentKey || opacityDragging) return;
             contentKey = key;
             bool samePage = renderedTab == presentation.Tab && renderedSelection == presentation.Selected;
             float scroll = samePage && body != null && body.scrollPane != null ? body.scrollPane.posY : 0;
             if (body != null && !body.isDisposed) body.Dispose();
             // Side navigation scrolls independently from mod content.
-            var oldTabs = window.GetChild("overlay.sidebar");
-            if (oldTabs != null) oldTabs.Dispose();
             RenderSidebar();
-            body = new OverlayScrollView(panelWidth - 132, Math.Max(1, panelHeight - 64));
+            body = new OverlayScrollView(panelWidth - 32, Math.Max(1, panelHeight - 64));
             body.name = "overlay.content";
-            body.SetXY(120, 16); window.AddChild(body);
-            if (presentation.Tab == 0) RenderSpeed();
+            body.SetXY(16, 16); window.AddChild(body);
+            if (presentation.Tab == SettingsTab) RenderOverlaySettings();
+            else if (presentation.Tab == 0) RenderSpeed();
             else if (presentation.Selected != null) RenderActions(presentation.Selected);
             else RenderList(ids);
-            window.SetChildIndex(window.GetChild("overlay.resize"), window.numChildren - 1);
             body.EnsureBoundsCorrect();
             body.scrollPane.SetPosY(scroll, false);
             renderedTab = presentation.Tab;
             renderedSelection = presentation.Selected;
-            notice.text = string.IsNullOrEmpty(AndroidApi.Notice) ? "拖动底角调整大小" : AndroidApi.Notice;
+            notice.text = string.IsNullOrEmpty(AndroidApi.Notice) ? "点击窗外空白处收起" : AndroidApi.Notice;
+            Animate(Time.realtimeSinceStartup);
         }
 
         private void RenderSpeed()
@@ -258,15 +288,16 @@ namespace CesiumOverlayMod
             {
                 double delta = deltas[i];
                 var button = Button(card, labels[i], "speed.delta." + labels[i], 18 + i * (buttonWidth + 10), 82, buttonWidth, 52,
-                    () => Run(() => LocalSpeed.Choose(LocalSpeed.SelectedSpeed + delta)),
+                    () => Run(() => SpeedPanel.Choose(LocalSpeed.SelectedSpeed + delta)),
                     i == 3 ? OverlayTheme.SpeedPrimary : OverlayTheme.SpeedButton,
                     i == 3 ? OverlayTheme.SpeedPrimaryText : OverlayTheme.Text);
                 bool limit = delta < 0 ? LocalSpeed.SelectedSpeed <= 1 : LocalSpeed.SelectedSpeed >= 10;
                 button.touchable = !limit;
                 button.alpha = limit ? .48f : 1;
             }
-            Button(card, "禁用倍速 (1.0x)", "speed.reset", 18, 150, w - 36, 50,
-                () => Run(() => LocalSpeed.Choose(1)), OverlayTheme.SpeedButton, OverlayTheme.Text);
+            string reset = SpeedPanel.Suspended ? "启用原变速 (" + SpeedPanel.SavedSpeed.ToString("0.0", CultureInfo.InvariantCulture) + "x)" : "恢复原速";
+            Button(card, reset, "speed.restore-resume", 18, 150, w - 36, 50,
+                () => Run(SpeedPanel.Toggle), OverlayTheme.SpeedButton, OverlayTheme.Text);
             Text(body, "范围 1.0–10.0x · 每次启动默认 1.0x", 18, 6, 232, w - 12, 32, OverlayTheme.Muted);
             Text(body, "仅调整客户端逻辑与动画，不改变服务器计时。", 18, 6, 268, w - 12, 54, OverlayTheme.Muted);
         }
@@ -420,6 +451,8 @@ namespace CesiumOverlayMod
         public override void OnLateUpdate() { LocalSpeed.Tick(); }
         public override void OnUnload()
         {
+            if (observingOutside && Stage.inst != null) Stage.inst.onTouchBegin.Remove(OnOutsideTouch);
+            observingOutside = false;
             VirtualKeyboard.Uninstall();
             LocalSpeed.Restore();
             HudVisibility.Restore();

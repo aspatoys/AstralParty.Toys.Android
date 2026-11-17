@@ -10,15 +10,15 @@ namespace CesiumOverlayMod
     {
         private OverlayOptions options = OverlayOptions.Defaults();
         private string optionsRaw;
-        private bool resizing;
-        private int resizeTouch = -1;
-        private Vector2 resizeStart;
-        private float resizeWidth, resizeHeight, previewWidth, previewHeight;
+        private GComponent sidePanel;
+        private readonly DockIconState dock = new DockIconState();
+        private bool iconDragging, iconPressed;
+        private const int SettingsTab = -1;
         private string OptionsPath { get { return AndroidApi.GetLoaderPath("data", "toys-overlay.txt"); } }
 
         private bool PollOptions()
         {
-            if (resizing) return false;
+            if (opacityDragging) return false;
             try
             {
                 string raw = File.Exists(OptionsPath) ? File.ReadAllText(OptionsPath) : null;
@@ -30,80 +30,88 @@ namespace CesiumOverlayMod
             }
             catch (Exception error) { AndroidApi.ShowNotice("悬浮窗设置读取失败，保留当前设置：" + error.Message); return false; }
         }
-        private void SaveSize(float w, float h)
+
+        private void SaveOpacity(float opacity)
         {
-            // Re-read before saving size so a concurrent APK edit does not lose its groups/opacity.
-            try
-            {
-                var latest = File.Exists(OptionsPath) ? OverlayOptions.Parse(File.ReadAllText(OptionsPath)) : options;
-                latest.Width = OverlayOptions.Clamp(w, .65f, 1.6f, 1);
-                latest.Height = OverlayOptions.Clamp(h, .65f, 1.6f, 1);
-                string raw = latest.Encode();
-                Directory.CreateDirectory(Path.GetDirectoryName(OptionsPath));
-                string temp = OptionsPath + ".game-tmp";
-                File.WriteAllText(temp, raw);
-                // Root is game-owned; replacing is safe and readers only see complete snapshots.
-                if (File.Exists(OptionsPath)) File.Replace(temp, OptionsPath, null);
-                else File.Move(temp, OptionsPath);
-                options = latest; optionsRaw = raw;
-            }
-            catch (Exception error) { AndroidApi.ShowNotice("大小保存失败：" + error.Message); }
+            // Re-read before saving so a concurrent APK edit does not lose its groups or size.
+            var latest = File.Exists(OptionsPath) ? OverlayOptions.Parse(File.ReadAllText(OptionsPath)) : options;
+            latest.Opacity = OverlayOptions.Clamp(opacity, .25f, 1, OpacitySlider.Default);
+            string raw = latest.Encode();
+            Directory.CreateDirectory(Path.GetDirectoryName(OptionsPath));
+            string temp = OptionsPath + ".game-tmp";
+            File.WriteAllText(temp, raw);
+            // Root is game-owned; replacing is safe and readers only see complete snapshots.
+            if (File.Exists(OptionsPath)) File.Replace(temp, OptionsPath, null);
+            else File.Move(temp, OptionsPath);
+            options = latest; optionsRaw = raw;
         }
-        private void AddResizeHandle()
-        {
-            var handle = Button(window, "◢", "overlay.resize", presentation.FromRight ? 0 : panelWidth - 42,
-                panelHeight - 42, 42, 42, () => { });
-            handle.onTouchBegin.Add(context =>
-            {
-                if (!presentation.Open || presentation.Progress(Time.realtimeSinceStartup) < .99f) return;
-                resizing = true; resizeTouch = context.inputEvent.touchId;
-                resizeStart = GRoot.inst.GlobalToLocal(context.inputEvent.position);
-                resizeWidth = previewWidth = panelWidth * uiScale;
-                resizeHeight = previewHeight = panelHeight * uiScale;
-                VirtualKeyboard.Instance?.Clear();
-                context.CaptureTouch(); context.StopPropagation();
-            });
-            handle.onTouchMove.Add(context =>
-            {
-                if (!resizing || context.inputEvent.touchId != resizeTouch) return;
-                var current = GRoot.inst.GlobalToLocal(context.inputEvent.position);
-                var baseline = OverlayPresentation.Bounds(width, height);
-                float dx = (current.x - resizeStart.x) * (presentation.FromRight ? -1 : 1);
-                previewWidth = Math.Max(Math.Min(440 * uiScale, width - 24), Math.Min(width - 24,
-                    Math.Max(baseline.Width * .65f, Math.Min(baseline.Width * 1.6f, resizeWidth + dx))));
-                previewHeight = Math.Max(Math.Min(300 * uiScale, height - 24), Math.Min(height - 24,
-                    Math.Max(baseline.Height * .65f, Math.Min(baseline.Height * 1.6f, resizeHeight + current.y - resizeStart.y))));
-                context.StopPropagation();
-            });
-            handle.onTouchEnd.Add(context =>
-            {
-                if (!resizing || context.inputEvent.touchId != resizeTouch) return;
-                resizing = false; resizeTouch = -1;
-                var baseline = OverlayPresentation.Bounds(width, height);
-                SaveSize(previewWidth / baseline.Width, previewHeight / baseline.Height);
-                Build();
-                context.StopPropagation();
-            });
-        }
+
         private void RenderSidebar()
         {
-            var sidebar = new OverlayScrollView(94, Math.Max(1, panelHeight - 24));
-            sidebar.name = "overlay.sidebar"; sidebar.SetXY(12, 12); window.AddChild(sidebar);
-            Text(sidebar, "工具箱", 18, 2, 0, 90, 36, OverlayTheme.Muted, true);
-            float y = 44;
+            if (sidePanel != null && !sidePanel.isDisposed) sidePanel.Dispose();
+            var layout = DockLayout.Measure(width, height, uiScale, options.Width, presentation.FromRight, icon.y);
+            float railWidth = layout.Rail / uiScale;
+            sidePanel = new GComponent { name = "overlay.sidebar-shell", opaque = true };
+            sidePanel.SetSize(railWidth, panelHeight);
+            root.AddChild(sidePanel);
+            Rounded(sidePanel, railWidth, panelHeight, OverlayTheme.Background, 28, true);
+            sidePanel.onTouchBegin.Add(BlockGestures);
+            var sidebar = new OverlayScrollView(railWidth - 12, Math.Max(1, panelHeight - 16));
+            sidebar.name = "overlay.sidebar"; sidebar.SetXY(6, 8); sidePanel.AddChild(sidebar);
+            float y = 0;
             for (int i = 0; i <= options.Groups.Count + 1; i++)
             {
                 int tab = i;
                 string label = i == 0 ? "变速" : i == options.Groups.Count + 1 ? "其他" : options.Groups[i - 1].Name;
-                Button(sidebar, label, "overlay.tab." + i, 0, y, 90, 58,
+                Button(sidebar, label, "overlay.tab." + i, 0, y, sidebar.width, 64,
                     () => { VirtualKeyboard.Instance?.Clear(); presentation.SelectTab(tab); contentKey = null; Render(); },
                     presentation.Tab == i ? OverlayTheme.Selected : OverlayTheme.Panel,
                     presentation.Tab == i ? OverlayTheme.Accent : OverlayTheme.Muted);
-                y += 66;
+                y += 74;
             }
-            Button(sidebar, "默认\n大小", "overlay.reset-size", 0, y + 8, 90, 64, () => { SaveSize(1, 1); Build(); });
-            Button(sidebar, "收起", "overlay.close", 0, y + 80, 90, 58, Close);
+            Button(sidebar, "设置", "overlay.settings", 0, y + 8, sidebar.width, 64,
+                () => { VirtualKeyboard.Instance?.Clear(); presentation.SelectTab(SettingsTab); contentKey = null; Render(); },
+                presentation.Tab == SettingsTab ? OverlayTheme.Selected : OverlayTheme.Panel,
+                presentation.Tab == SettingsTab ? OverlayTheme.Accent : OverlayTheme.Muted);
             sidebar.EnsureBoundsCorrect();
+        }
+
+        private void RenderOverlaySettings()
+        {
+            float w = body.width;
+            Text(body, "悬浮窗设置", 28, 4, 4, w - 8, 44);
+            var readout = Text(body, "", 24, 4, 64, w - 8, 44);
+            AddOpacitySlider(w, readout);
+            Text(body, "25%", 16, 4, 174, w / 2 - 8, 28, OverlayTheme.Muted);
+            Text(body, "100%", 16, w / 2, 174, w / 2 - 4, 28, OverlayTheme.Muted);
+            Button(body, "恢复默认透明度", "opacity.default", 0, 198, w, 58,
+                () => Run(() => SaveOpacity(OpacitySlider.Default)));
+            Text(body, "拖动即时预览，松手保存；默认 50%。分组及统一大小仍可在 APK 中设置。", 18, 4, 278, w - 8, 88, OverlayTheme.Muted);
+            Text(body, "点击窗外空白处收起。圆形入口闲置 5 秒或点击外部后，自动淡化并贴边半隐藏。", 18, 4, 378, w - 8, 88, OverlayTheme.Muted);
+        }
+
+        private static bool Contains(GComponent component, Vector2 point)
+        {
+            if (component == null || component.isDisposed || !component.visible) return false;
+            var local = component.GlobalToLocal(point);
+            return local.x >= 0 && local.y >= 0 && local.x <= component.width && local.y <= component.height;
+        }
+        private void OnOutsideTouch(EventContext context)
+        {
+            var point = context.inputEvent.position;
+            if (Contains(icon, point) || (presentation.Open && (Contains(window, point) || Contains(sidePanel, point)))) return;
+            if (iconDragging) return;
+            if (presentation.Open) Close();
+            dock.Rest(Time.realtimeSinceStartup);
+            // Observe without consuming: the game keeps receiving the same touch.
+        }
+
+        private void RoundAvatar(float size)
+        {
+            var mask = new GGraph { name = "overlay.avatar-mask", touchable = false };
+            mask.DrawRoundRect(size, size, Color.white, new[] { size / 2, size / 2, size / 2, size / 2 });
+            icon.AddChild(mask);
+            icon.mask = mask.displayObject;
         }
     }
 }

@@ -81,7 +81,7 @@ enum class SettingsSection(
     val iconRes: Int,
 ) {
     APPEARANCE("外观", "主题模式与显示效果", R.drawable.ic_settings_theme),
-    OVERLAY("悬浮窗", "分组、透明度与窗口大小", R.drawable.ic_nav_mods),
+    OVERLAY("悬浮窗", "分组与正方形窗口大小", R.drawable.ic_nav_mods),
     BACKGROUND("背景", "自定义应用背景图", R.drawable.ic_settings_wallpaper),
     MARKET("市场", "模组市场地址与免责声明", R.drawable.ic_nav_market),
     LANGUAGE("语言", "界面与市场展示语言", R.drawable.ic_settings_language),

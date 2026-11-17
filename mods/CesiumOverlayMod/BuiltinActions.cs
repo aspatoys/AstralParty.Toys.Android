@@ -37,7 +37,7 @@ namespace CesiumOverlayMod
                         double target = speed;
                         AndroidApi.RegisterButton(current.ModId, "toys.speed." + target, target + "×", () =>
                         {
-                            LocalSpeed.Choose(target);
+                            SpeedPanel.Choose(target);
                         });
                     }
                 }

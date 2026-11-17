@@ -38,6 +38,8 @@ sources = [
     root / 'CesiumOverlayMod/OverlayPresentation.cs',
     root / 'CesiumOverlayMod/HudVisibility.cs',
     root / 'CesiumOverlayMod/LocalSpeed.cs',
+    root / 'CesiumOverlayMod/SpeedPanel.cs',
+    root / 'CesiumOverlayMod/DockState.cs',
     legacy / 'ModEntry.cs',
     legacy / 'UnitySpeedScale.cs',
     legacy / 'FixedStepBudget.cs',

@@ -6,7 +6,7 @@ data class OverlayGroup(val name: String, val mods: List<String> = emptyList())
 
 /** Versioned, locale-independent wire format shared with the in-game C# overlay. */
 data class OverlayOptions(
-    val opacity: Float = 0.94f,
+    val opacity: Float = 0.5f,
     val width: Float = 1f,
     val height: Float = 1f,
     val groups: List<OverlayGroup> = defaultGroups,
@@ -14,7 +14,7 @@ data class OverlayOptions(
     fun normalized(): OverlayOptions {
         val assigned = mutableSetOf<String>()
         return copy(
-            opacity = opacity.takeIf { it.isFinite() }?.coerceIn(0.25f, 1f) ?: 0.94f,
+            opacity = opacity.takeIf { it.isFinite() }?.coerceIn(0.25f, 1f) ?: 0.5f,
             width = width.takeIf { it.isFinite() }?.coerceIn(0.65f, 1.6f) ?: 1f,
             height = height.takeIf { it.isFinite() }?.coerceIn(0.65f, 1.6f) ?: 1f,
             groups = groups.take(8).map { group ->
@@ -48,7 +48,7 @@ data class OverlayOptions(
                 require(pair.size == 2) { "悬浮窗分组格式错误。" }
                 OverlayGroup(String(Base64.getDecoder().decode(pair[0]), Charsets.UTF_8), pair[1].split(',').filter(String::isNotBlank))
             }
-            return OverlayOptions(number("opacity", 0.94f), number("width", 1f), number("height", 1f), groups).normalized()
+            return OverlayOptions(number("opacity", 0.5f), number("width", 1f), number("height", 1f), groups).normalized()
         }
     }
 }
