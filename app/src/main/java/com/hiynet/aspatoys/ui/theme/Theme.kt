@@ -15,7 +15,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
 /** 备用浅色配色（系统低于 Android 12 或不支持动态配色时使用）。 */
-private val LightColorScheme = lightColorScheme(
+internal val LightColorScheme = lightColorScheme(
     primary = Raspberry,
     onPrimary = Color.White,
     primaryContainer = RaspberryContainer,
@@ -45,7 +45,7 @@ private val LightColorScheme = lightColorScheme(
 )
 
 /** 备用深色配色。 */
-private val DarkColorScheme = darkColorScheme(
+internal val DarkColorScheme = darkColorScheme(
     primary = RaspberryLight,
     onPrimary = Color(0xFF300014),
     primaryContainer = RaspberryContainerDark,

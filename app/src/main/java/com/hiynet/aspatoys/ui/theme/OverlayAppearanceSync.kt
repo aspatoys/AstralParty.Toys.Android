@@ -36,7 +36,8 @@ fun OverlayAppearanceSync(settings: AppSettings) {
     LaunchedEffect(mode, systemDark, root, permission, resumed) {
         withContext(Dispatchers.IO) {
             runCatching {
-                overlay.syncAppearance(root, mode, systemDark)
+                val tokens = OverlayPalette.tokens(context)
+                overlay.syncAppearance(root, mode, systemDark) { tokens }
                 com.hiynet.aspatoys.data.settings.OverlayOptionsStore(context).sync(root)
             }
                 .onFailure { android.util.Log.w("ToysOverlay", "主题同步失败，下次连接或安装时重试", it) }

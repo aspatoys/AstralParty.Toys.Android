@@ -59,6 +59,15 @@ fun OverlaySettings(settings: AppSettings) {
         Text("统一大小 ${(value.width * 100).toInt()}%")
         Slider(value.width, { value = value.copy(width = it, height = it) }, enabled = !busy, valueRange = 0.65f..1.6f)
         OutlinedButton(enabled = !busy, onClick = { value = value.copy(width = 1f, height = 1f) }) { Text("恢复默认大小") }
+        Text("字体大小 ${(value.fontScale * 100).toInt()}%")
+        Slider(value.fontScale, { value = value.copy(fontScale = it) }, enabled = !busy, valueRange = 0.8f..1.4f)
+        Text(
+            if (value.idleSeconds <= 0f) "闲置淡出 已关闭"
+            else "闲置淡出 闲置 ${value.idleSeconds.toInt()} 秒后变淡"
+        )
+        Slider(value.idleSeconds, { value = value.copy(idleSeconds = it) }, enabled = !busy, valueRange = 0f..15f)
+        Text("闲置浓度 ${(value.idleOpacity * 100).toInt()}%")
+        Slider(value.idleOpacity, { value = value.copy(idleOpacity = it) }, enabled = !busy, valueRange = 0.15f..1f)
         Text("自定义分组", style = MaterialTheme.typography.titleMedium)
         Text("变速为固定入口，未分配的模组显示在「其他」；分组顺序就是侧栏顺序。")
         value.groups.forEachIndexed { index, group ->

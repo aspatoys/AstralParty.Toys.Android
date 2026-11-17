@@ -201,6 +201,24 @@ class BuiltinOverlayTest {
         assertFalse(fs.exists("$root/mods/$id/$id.dll"))
     }
 
+    @Test fun `theme sync appends material tokens after the two legacy lines`() {
+        val fs = MemoryFs()
+        fs.files["$root/sdk/CesiumLoader.SDK.dll"] = byteArrayOf(9)
+        fs.files["$root/mods/$id/$id.dll"] = byteArrayOf(3)
+        overlay(fs).syncAppearance(root, ThemeMode.SYSTEM, true) { "primary=#FFD0BCFF\n" }
+        assertEquals("system\ndark\nprimary=#FFD0BCFF\n", fs.readText("$root/data/toys-appearance.txt"))
+        // Tokens alone changing must still rewrite the file.
+        overlay(fs).syncAppearance(root, ThemeMode.SYSTEM, true) { "primary=#FF6750A4\n" }
+        assertEquals("system\ndark\nprimary=#FF6750A4\n", fs.readText("$root/data/toys-appearance.txt"))
+    }
+
+    @Test fun `without tokens the appearance file keeps its legacy two lines`() {
+        val fs = MemoryFs()
+        fs.files["$root/sdk/CesiumLoader.SDK.dll"] = byteArrayOf(9)
+        overlay(fs).install(root, ThemeMode.LIGHT, true)
+        assertEquals("light\nlight\n", fs.readText("$root/data/toys-appearance.txt"))
+    }
+
     private class MemoryFs : LoaderFs {
         val files = mutableMapOf<String, ByteArray>()
         val directories = mutableSetOf<String>()

@@ -164,6 +164,7 @@ val syncLoaderAssets = tasks.register("syncLoaderAssets") {
         if (overlayAssets.isDirectory) {
             overlayAssets.copyRecursively(assetsCesium, overwrite = true)
         }
+        val buildModsHint = "先运行 python mods/build.py --refs <游戏引用程序集目录>（详见 mods/README.md）"
         require(File(assetsCesium, "CesiumAndroidApi.dll").isFile &&
             File(assetsCesium, "mods/CesiumOverlayMod/CesiumOverlayMod.dll").isFile &&
             File(assetsCesium, "mods/SpeedHackMod/SpeedHackMod.dll").isFile &&
@@ -172,7 +173,22 @@ val syncLoaderAssets = tasks.register("syncLoaderAssets") {
             File(assetsCesium, "mods/FreeCameraMod/FreeCameraMod.dll").isFile &&
             File(assetsCesium, "mods/FreeCameraMod/FreeCameraMod.json").takeIf { it.isFile }
                 ?.readText()?.contains("2.7.2-android-pinch") == true) {
-            "缺少内置悬浮窗：先运行 python mods/build.py --refs <游戏引用程序集目录>（详见 mods/README.md）"
+            "缺少内置悬浮窗：$buildModsHint"
+        }
+        // 清单里的版本号是 build.py 写死的常量，只看它会把任意旧二进制放行，
+        // 所以再读一遍 DLL，确认它确实出自当前源码。
+        val overlayVersion = "1.0.0"
+        val overlayManifest = File(assetsCesium, "mods/CesiumOverlayMod/CesiumOverlayMod.json")
+        val declaredVersion = Regex("\"version\"\\s*:\\s*\"([^\"]+)\"")
+            .find(overlayManifest.takeIf { it.isFile }?.readText().orEmpty())?.groupValues?.get(1)
+        require(declaredVersion == overlayVersion) {
+            "内置悬浮窗清单版本为 $declaredVersion，应为 $overlayVersion：$buildModsHint"
+        }
+        val overlayBytes = File(assetsCesium, "mods/CesiumOverlayMod/CesiumOverlayMod.dll").readBytes()
+        val overlayUtf16 = String(overlayBytes, Charsets.UTF_16LE)
+        val overlayUtf8 = String(overlayBytes, Charsets.UTF_8)
+        require(overlayUtf16.contains("toys-overlay.txt") && overlayUtf8.contains("PollOptions")) {
+            "内置悬浮窗 DLL 不是 $overlayVersion 源码的产物（缺少 toys-overlay.txt / PollOptions）：$buildModsHint"
         }
         val recovery = File(assetsCesium, "recovery/original.bundle")
         require(recovery.isFile) { "缺少离线恢复原包：先运行 python installer/prepare-recovery.py --bundle <原版__data>" }
