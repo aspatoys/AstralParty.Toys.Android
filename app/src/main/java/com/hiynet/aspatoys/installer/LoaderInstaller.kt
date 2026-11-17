@@ -7,6 +7,7 @@ import com.hiynet.aspatoys.data.loader.BuiltinOverlay
 import com.hiynet.aspatoys.data.settings.AppSettings
 import com.hiynet.aspatoys.data.loader.ShizukuLoaderFs
 import com.hiynet.aspatoys.data.loader.LoaderFs
+import com.hiynet.aspatoys.ui.theme.OverlayPalette
 import com.hiynet.cesiumloader.core.unity.TextAssetPatch
 import com.hiynet.cesiumloader.core.unity.UnityFs
 import com.hiynet.cesiumloader.core.unity.UnityFsWriter
@@ -216,7 +217,9 @@ class LoaderInstaller(
 
     private fun installOverlayAt(root: String, log: (String) -> Unit) {
         val dark = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
-        BuiltinOverlay(context).install(root, AppSettings(context).themeMode, dark, log)
+        BuiltinOverlay(context).install(root, AppSettings(context).themeMode, dark, log) {
+            OverlayPalette.tokens(context)
+        }
     }
 
     private fun patchBundle(original: ByteArray, log: (String) -> Unit): ByteArray {

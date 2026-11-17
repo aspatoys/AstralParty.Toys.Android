@@ -14,7 +14,18 @@ class BuiltinOverlay(
         { context.assets.open(it).use { input -> input.readBytes() } },
     )
 
-    fun install(root: String, mode: ThemeMode, systemDark: Boolean, log: (String) -> Unit = {}) {
+    /**
+     * [tokens] supplies optional `name=#AARRGGBB` lines for the overlay's Material 3 roles, so the
+     * in-game UI can follow the phone's dynamic colour instead of a hand-tuned baseline. Defaults to
+     * empty, which keeps the file at the two lines older overlays understand.
+     */
+    fun install(
+        root: String,
+        mode: ThemeMode,
+        systemDark: Boolean,
+        log: (String) -> Unit = {},
+        tokens: () -> String = { "" },
+    ) {
         check(fs.isAvailable()) { "请先在加载器页连接 Shizuku 或 Root" }
         check(fs.exists("$root/sdk/CesiumLoader.SDK.dll") || fs.exists("$root/CesiumLoader.SDK.dll")) {
             "当前目录没有加载器 SDK，请先安装加载器或在设置中选择正确目录"
@@ -56,20 +67,24 @@ class BuiltinOverlay(
             // 旧平铺 DLL/sidecar 已由 ModStateStore 退役（改名或备份），这里不再自己搬。
             log("$id 已${if (placement.disabled) "更新（保持停用）" else "安装"}")
         }
-        writeAppearance(root, mode, systemDark)
+        writeAppearance(root, mode, systemDark, tokens)
         log("启动默认 1 倍，仅悬浮窗控制变速；完全重启游戏后生效")
     }
 
-    fun syncAppearance(root: String, mode: ThemeMode, systemDark: Boolean) {
+    fun syncAppearance(root: String, mode: ThemeMode, systemDark: Boolean, tokens: () -> String = { "" }) {
         if (!fs.isAvailable()) return
         if (listOf("mods/$ID/$ID.dll", "disabled_mods/$ID/$ID.dll", "mods/$ID.dll", "disabled_mods/$ID.dll")
                 .none { fs.exists("$root/$it") }) return
-        writeAppearance(root, mode, systemDark)
+        writeAppearance(root, mode, systemDark, tokens)
     }
 
-    private fun writeAppearance(root: String, mode: ThemeMode, systemDark: Boolean) {
+    private fun writeAppearance(root: String, mode: ThemeMode, systemDark: Boolean, tokens: () -> String) {
         val path = "$root/data/toys-appearance.txt"
-        val text = "${mode.preferenceValue}\n${if (mode.resolveDark(systemDark)) "dark" else "light"}\n"
+        val text = buildString {
+            append(mode.preferenceValue).append('\n')
+            append(if (mode.resolveDark(systemDark)) "dark" else "light").append('\n')
+            append(tokens())
+        }
         if (fs.readText(path) == text) return
         fs.makeDirectories("$root/data")
         fs.writeText(path, text)

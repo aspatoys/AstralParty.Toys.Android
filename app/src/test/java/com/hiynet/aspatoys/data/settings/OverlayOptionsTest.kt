@@ -168,4 +168,54 @@ class OverlayOptionsTest {
         val normalized = OverlayOptions(groups = groups).normalized()
         assertEquals(8, normalized.groups.size)
     }
+
+    // ─── Font scale and remembered centre survive a round trip ───────────────
+
+    @Test fun `font scale and centre round trip through the wire format`() {
+        val encoded = OverlayOptions(fontScale = 1.15f, center = 0.42f).encode()
+        assertTrue(encoded.contains("font=1.15"))
+        assertTrue(encoded.contains("center=0.42"))
+        val decoded = OverlayOptions.decode(encoded)
+        assertEquals(1.15f, decoded.fontScale, 1e-4f)
+        assertEquals(0.42f, decoded.center, 1e-4f)
+    }
+
+    @Test fun `an unmoved overlay omits the centre line`() {
+        val encoded = OverlayOptions().encode()
+        assertFalse("an unset centre must not be written", encoded.contains("center="))
+        assertEquals(-1f, OverlayOptions.decode(encoded).center, 1e-4f)
+    }
+
+    @Test fun `font scale is clamped into range`() {
+        assertEquals(0.8f, OverlayOptions(fontScale = 0.1f).normalized().fontScale, 1e-4f)
+        assertEquals(1.4f, OverlayOptions(fontScale = 5f).normalized().fontScale, 1e-4f)
+    }
+
+    // ─── Idle fade and remembered speed survive a round trip ─────────────────
+
+    @Test fun `idle fade settings round trip through the wire format`() {
+        val encoded = OverlayOptions(idleSeconds = 8f, idleOpacity = 0.5f).encode()
+        assertTrue(encoded.contains("idle=8.0"))
+        assertTrue(encoded.contains("idleOpacity=0.5"))
+        val decoded = OverlayOptions.decode(encoded)
+        assertEquals(8f, decoded.idleSeconds, 1e-4f)
+        assertEquals(0.5f, decoded.idleOpacity, 1e-4f)
+    }
+
+    @Test fun `previous speed round trips so restore works after a restart`() {
+        val encoded = OverlayOptions(previousSpeed = 2.5f).encode()
+        assertTrue(encoded.contains("previousSpeed=2.5"))
+        assertEquals(2.5f, OverlayOptions.decode(encoded).previousSpeed, 1e-4f)
+    }
+
+    @Test fun `idle fade and previous speed are clamped into range`() {
+        val low = OverlayOptions(idleSeconds = -4f, idleOpacity = 0.01f, previousSpeed = 0.2f).normalized()
+        assertEquals(0f, low.idleSeconds, 1e-4f)
+        assertEquals(0.15f, low.idleOpacity, 1e-4f)
+        assertEquals(1f, low.previousSpeed, 1e-4f)
+        val high = OverlayOptions(idleSeconds = 900f, idleOpacity = 4f, previousSpeed = 40f).normalized()
+        assertEquals(60f, high.idleSeconds, 1e-4f)
+        assertEquals(1f, high.idleOpacity, 1e-4f)
+        assertEquals(10f, high.previousSpeed, 1e-4f)
+    }
 }

@@ -9,6 +9,15 @@ data class OverlayOptions(
     val opacity: Float = 0.5f,
     val width: Float = 1f,
     val height: Float = 1f,
+    val fontScale: Float = 1f,
+    /** Vertical centre of the bar as a fraction of screen height; negative means "never moved". */
+    val center: Float = -1f,
+    /** Idle seconds before the floating blob fades out; 0 keeps it fully opaque. */
+    val idleSeconds: Float = 5f,
+    /** Alpha the idle blob fades to. */
+    val idleOpacity: Float = 0.35f,
+    /** Last speed above 1.0x, restored by the resume action in the speed page. */
+    val previousSpeed: Float = 1f,
     val groups: List<OverlayGroup> = defaultGroups,
 ) {
     fun normalized(): OverlayOptions {
@@ -17,6 +26,16 @@ data class OverlayOptions(
             opacity = opacity.takeIf { it.isFinite() }?.coerceIn(0.25f, 1f) ?: 0.5f,
             width = width.takeIf { it.isFinite() }?.coerceIn(0.65f, 1.6f) ?: 1f,
             height = height.takeIf { it.isFinite() }?.coerceIn(0.65f, 1.6f) ?: 1f,
+            fontScale = fontScale.takeIf { it.isFinite() }?.coerceIn(0.8f, 1.4f) ?: 1f,
+            idleSeconds = idleSeconds.takeIf { it.isFinite() }?.coerceIn(0f, 60f) ?: 5f,
+            idleOpacity = idleOpacity.takeIf { it.isFinite() }?.coerceIn(0.15f, 1f) ?: 0.35f,
+            previousSpeed = previousSpeed.takeIf { it.isFinite() }?.coerceIn(1f, 10f) ?: 1f,
+            // Negative means "the bar was never moved"; clamping it to 0 would pin it to the top.
+            center = when {
+                !center.isFinite() -> -1f
+                center < 0f -> -1f
+                else -> center.coerceIn(0f, 1f)
+            },
             groups = groups.take(8).map { group ->
                 OverlayGroup(group.name.trim().take(30).ifBlank { "分组" }, group.mods.filter {
                     validId.matches(it) && it != "SpeedHackMod" && assigned.add(it.lowercase())
@@ -30,6 +49,11 @@ data class OverlayOptions(
         appendLine("opacity=${value.opacity}")
         appendLine("width=${value.width}")
         appendLine("height=${value.height}")
+        appendLine("font=${value.fontScale}")
+        appendLine("idle=${value.idleSeconds}")
+        appendLine("idleOpacity=${value.idleOpacity}")
+        appendLine("previousSpeed=${value.previousSpeed}")
+        if (value.center >= 0f) appendLine("center=${value.center}")
         value.groups.forEach { group ->
             appendLine("group=${Base64.getEncoder().encodeToString(group.name.toByteArray(Charsets.UTF_8))}|${group.mods.joinToString(",")}")
         }
@@ -48,7 +72,17 @@ data class OverlayOptions(
                 require(pair.size == 2) { "悬浮窗分组格式错误。" }
                 OverlayGroup(String(Base64.getDecoder().decode(pair[0]), Charsets.UTF_8), pair[1].split(',').filter(String::isNotBlank))
             }
-            return OverlayOptions(number("opacity", 0.5f), number("width", 1f), number("height", 1f), groups).normalized()
+            return OverlayOptions(
+                opacity = number("opacity", 0.5f),
+                width = number("width", 1f),
+                height = number("height", 1f),
+                fontScale = number("font", 1f),
+                center = number("center", -1f),
+                idleSeconds = number("idle", 5f),
+                idleOpacity = number("idleOpacity", 0.35f),
+                previousSpeed = number("previousSpeed", 1f),
+                groups = groups,
+            ).normalized()
         }
     }
 }

@@ -14,6 +14,16 @@ namespace CesiumOverlayMod
     internal sealed class OverlayOptions
     {
         internal float Opacity = .5f, Width = 1, Height = 1;
+        /// <summary>Panel text scale, 0.8x to 1.4x.</summary>
+        internal float FontScale = 1f;
+        /// <summary>Vertical centre as a fraction of screen height, -1 when never moved.</summary>
+        internal float Center = -1f;
+        /// <summary>Idle seconds before the floating blob fades out; 0 keeps it fully opaque.</summary>
+        internal float IdleSeconds = 5f;
+        /// <summary>Opacity the idle blob fades to, 0.15 to 1.</summary>
+        internal float IdleOpacity = .35f;
+        /// <summary>Last speed above 1.0x, restored by the 恢复倍速 button.</summary>
+        internal float PreviousSpeed = 1f;
         internal readonly List<OverlayGroup> Groups = new List<OverlayGroup>();
         internal static OverlayOptions Defaults()
         {
@@ -31,6 +41,11 @@ namespace CesiumOverlayMod
             text.Append("opacity=").Append(Number(Opacity)).Append('\n');
             text.Append("width=").Append(Number(Width)).Append('\n');
             text.Append("height=").Append(Number(Height)).Append('\n');
+            text.Append("font=").Append(Number(FontScale)).Append('\n');
+            text.Append("idle=").Append(Number(IdleSeconds)).Append('\n');
+            text.Append("idleOpacity=").Append(Number(IdleOpacity)).Append('\n');
+            text.Append("previousSpeed=").Append(Number(PreviousSpeed)).Append('\n');
+            if (Center >= 0f) text.Append("center=").Append(Number(Center)).Append('\n');
             foreach (var group in Groups)
                 text.Append("group=").Append(Convert.ToBase64String(Encoding.UTF8.GetBytes(group.Name)))
                     .Append('|').Append(string.Join(",", group.Mods)).Append('\n');
@@ -52,6 +67,13 @@ namespace CesiumOverlayMod
                 if (key == "opacity") value.Opacity = float.TryParse(data, NumberStyles.Float, CultureInfo.InvariantCulture, out number) ? Clamp(number, .25f, 1, .5f) : .5f;
                 if (key == "width") value.Width = float.TryParse(data, NumberStyles.Float, CultureInfo.InvariantCulture, out number) ? Clamp(number, .65f, 1.6f, 1) : 1;
                 if (key == "height") value.Height = float.TryParse(data, NumberStyles.Float, CultureInfo.InvariantCulture, out number) ? Clamp(number, .65f, 1.6f, 1) : 1;
+                if (key == "font") value.FontScale = float.TryParse(data, NumberStyles.Float, CultureInfo.InvariantCulture, out number) ? Clamp(number, .8f, 1.4f, 1) : 1;
+                if (key == "idle") value.IdleSeconds = float.TryParse(data, NumberStyles.Float, CultureInfo.InvariantCulture, out number) ? Clamp(number, 0f, 60f, 5f) : 5f;
+                if (key == "idleOpacity") value.IdleOpacity = float.TryParse(data, NumberStyles.Float, CultureInfo.InvariantCulture, out number) ? Clamp(number, .15f, 1f, .35f) : .35f;
+                if (key == "previousSpeed") value.PreviousSpeed = float.TryParse(data, NumberStyles.Float, CultureInfo.InvariantCulture, out number) ? Clamp(number, 1f, 10f, 1f) : 1f;
+                // A negative centre means "never moved"; clamping it to 0 would pin the bar to the top.
+                if (key == "center") value.Center = float.TryParse(data, NumberStyles.Float, CultureInfo.InvariantCulture, out number) && !float.IsNaN(number) && number >= 0f
+                    ? Math.Min(1f, number) : -1f;
                 if (key != "group" || value.Groups.Count >= 8) continue;
                 var parts = data.Split('|');
                 if (parts.Length != 2) throw new FormatException("悬浮窗分组无效");

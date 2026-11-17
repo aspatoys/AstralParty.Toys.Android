@@ -50,6 +50,8 @@ python mods/build.py --refs <游戏引用程序集目录>
 python mods/build.py --refs <游戏引用程序集目录> --tools <工具目录>
 # 只更新本次悬浮窗，保留已打包的 API、相机与变速入口 DLL：
 python mods/build.py --refs <游戏引用程序集目录> --tools <工具目录> --overlay-only
+# 悬浮窗同时新增 AndroidApi 接口时，重编这两项，保留变速、相机和卡面适配：
+python mods/build.py --refs <游戏引用程序集目录> --tools <工具目录> --overlay-and-api-only
 ```
 
 `--tools` 目录包含 `csc/tasks/netcore/bincore/csc.dll` 与 `netstandard/build/netstandard2.0/ref/*.dll`。

@@ -9,9 +9,12 @@ ROOT = Path(__file__).resolve().parent
 parser = argparse.ArgumentParser()
 parser.add_argument('--refs', required=True, type=Path, help='Game reference DLL directory')
 parser.add_argument('--tools', type=Path, help='Optional csc/tasks + netstandard/build tool directory')
-parser.add_argument('--overlay-only', action='store_true', help='Rebuild only the overlay; keep the shipped API, speed adapter and camera unchanged')
+selection = parser.add_mutually_exclusive_group()
+selection.add_argument('--overlay-only', action='store_true', help='Rebuild only the overlay; keep the shipped API, speed adapter and camera unchanged')
+selection.add_argument('--overlay-and-api-only', action='store_true', help='Rebuild the overlay and its Android API; retain the speed, camera and card adapters')
 parser.add_argument('--sdk', type=Path, help='Optional official SDK DLL path')
 args = parser.parse_args()
+ui_only = args.overlay_only or args.overlay_and_api_only
 assets = ROOT.parent / 'app/src/main/assets/cesium'
 sdk = args.sdk or assets / 'sdk/CesiumLoader.SDK.dll'
 out = ROOT.parent / 'build/builtin-overlay'
@@ -34,19 +37,19 @@ if args.tools:
     api = assets / 'CesiumAndroidApi.dll' if args.overlay_only else compile_mod('CesiumAndroidApi', [args.refs / 'UnityEngine.CoreModule.dll'])
     overlay = compile_mod('CesiumOverlayMod', [sdk, api] + [args.refs / name for name in (
         'UnityEngine.CoreModule.dll', 'AstralParty.Runtime.dll')])
-    if not args.overlay_only:
+    if not ui_only:
         speed = compile_mod('SpeedHackMod', [sdk, overlay, args.refs / 'UnityEngine.CoreModule.dll'])
         camera = compile_mod('FreeCameraMod', [sdk, args.refs / 'UnityEngine.CoreModule.dll', args.refs / 'AstralParty.Runtime.dll'])
         card = compile_mod('CardSkinMod', [sdk] + [args.refs / name for name in (
             'UnityEngine.CoreModule.dll', 'AstralParty.Runtime.dll', 'UniTask.dll',
             'Google.Protobuf.Runtime.dll')])
 else:
-    project = 'CesiumOverlayMod' if args.overlay_only else 'SpeedHackMod'
+    project = 'CesiumOverlayMod' if ui_only else 'SpeedHackMod'
     subprocess.run(['dotnet', 'build', str(ROOT / project), '-c', 'Release', '--nologo',
                     '-p:GameRefs=' + str(args.refs.resolve()), '-p:CesiumSdkDll=' + str(sdk.resolve())], check=True)
     compiled = ROOT / 'CesiumOverlayMod/bin/Release/netstandard2.0'
     api, overlay = compiled / 'CesiumAndroidApi.dll', compiled / 'CesiumOverlayMod.dll'
-    if not args.overlay_only:
+    if not ui_only:
         speed = ROOT / 'SpeedHackMod/bin/Release/netstandard2.0/SpeedHackMod.dll'
         subprocess.run(['dotnet', 'build', str(ROOT / 'FreeCameraMod'), '-c', 'Release', '--nologo', '-p:GameRefs=' + str(args.refs.resolve()), '-p:CesiumSdkDll=' + str(sdk.resolve())], check=True)
         camera = ROOT / 'FreeCameraMod/bin/Release/netstandard2.0/FreeCameraMod.dll'
@@ -60,22 +63,27 @@ if not args.overlay_only:
     shutil.copy2(api, staged / 'CesiumAndroidApi.dll')
 shutil.copy2(overlay, target / overlay.name)
 shutil.copy2(ROOT / 'CesiumOverlayMod/overlay.png', target / 'overlay.png')
+icons = target / 'icons'
+icons.mkdir(parents=True, exist_ok=True)
+for icon in (ROOT / 'CesiumOverlayMod/icons').glob('*.png'):
+    shutil.copy2(icon, icons / icon.name)
 (target / 'CesiumOverlayMod.json').write_text(json.dumps({
-    'id': 'CesiumOverlayMod', 'name': '吉星工具箱悬浮窗', 'version': '0.9.0',
-    'author': 'TenkinMori / Cesium Android adaptation',
-    'description': '半屏侧边工具箱，首次打开变速页，中文功能分组与游戏内快捷开关。',
-    'sdkVersion': '2.8.6', 'permissions': 141, 'dependencies': [],
+    'id': 'CesiumOverlayMod', 'name': 'Cesium Android FloatingWindow', 'version': '1.0.0',
+    'author': 'TenkinMori/囚鱼玖',
+    'description': '为CesiumLoader安卓端定制的悬浮窗口',
+    'sdkVersion': '2.8.6', 'permissions': 141, 'platforms': ['android'],
+    'dependencies': [],
 }, ensure_ascii=False), encoding='utf-8')
 licenses = target / 'licenses'
 licenses.mkdir(exist_ok=True)
-if args.overlay_only:
+if ui_only:
     # Preserve the exact already-shipped notices, including their original line endings.
     shutil.copytree(assets / 'mods/CesiumOverlayMod/licenses', licenses, dirs_exist_ok=True)
 else:
     for license in (ROOT / 'licenses').glob('*'):
         shutil.copy2(license, licenses / license.name)
     shutil.copy2(ROOT.parent / 'LICENSE', licenses / 'Cesium-Android-Direct-AGPL-3.0.txt')
-if not args.overlay_only:
+if not ui_only:
     speed_target = staged / 'mods/SpeedHackMod'
     speed_target.mkdir(parents=True, exist_ok=True)
     shutil.copy2(speed, speed_target / 'SpeedHackMod.dll')
@@ -100,4 +108,4 @@ if not args.overlay_only:
     shutil.copy2(card, card_target / 'CardSkinMod.dll')
     shutil.copy2(ROOT / 'CardSkinMod/CardSkinMod.json', card_target / 'CardSkinMod.json')
 shutil.copytree(staged, assets, dirs_exist_ok=True)
-print('Bundled overlay only (existing API, speed adapter and camera retained).' if args.overlay_only else 'Bundled AndroidApi, overlay and panel-only speed adapter (official SDK retained).')
+print('Bundled overlay and Android API (existing speed, camera and card adapters retained).' if args.overlay_and_api_only else 'Bundled overlay only (existing API, speed adapter and camera retained).' if args.overlay_only else 'Bundled AndroidApi, overlay and panel-only speed adapter (official SDK retained).')
