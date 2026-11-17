@@ -66,9 +66,18 @@ class ModInstaller(
             val prefix = segments.dropLast(1).joinToString("/")
             log("模组：$modId（${if (prefix.isEmpty()) "平铺" else prefix}，DLL ${dllEntry.size} B）")
 
-            val disabled = resolveDisabledRoot(layout, modId, archive, entries, names, prefix, log)
-            val root = if (disabled) layout.disabledModsRoot.absolutePath else layout.modsRoot.absolutePath
-            val modRoot = "$root/$modId"
+            // 统一走状态整理：原地升级沿用原目录（停用的保持停用），重复副本/空目录/旧平铺文件一并收拾，
+            // 只留一份能被扫描的主体，避免「重装又造一份副本」。
+            val placement = stateStore.place(
+                layout = layout,
+                modId = modId,
+                folderName = modId,
+                defaultDisabled = resolveSidecarDisabled(modId, archive, entries, names, prefix, log),
+                migrateFlatToNested = true,
+                log = log,
+            )
+            val disabled = placement.disabled
+            val modRoot = placement.modDir
             fs.makeDirectories(modRoot)
 
             val written = mutableSetOf<String>()
@@ -93,6 +102,11 @@ class ModInstaller(
                         continue
                     }
 
+                    if (relative.substringAfterLast('/').lowercase() in setOf("config.json", "mod.cfg") && fs.exists("$modRoot/$relative")) {
+                        written += relative
+                        continue
+                    }
+
                     val local = File(staging, relative.replace('/', File.separatorChar))
                     local.parentFile?.mkdirs()
                     archive.getInputStream(zipEntry).use { input ->
@@ -101,7 +115,7 @@ class ModInstaller(
 
                     val remote = "$modRoot/$relative"
                     val parent = remote.substringBeforeLast('/')
-                    if (parent.length > root.length) fs.makeDirectories(parent)
+                    if (parent.length > placement.rootPath.length) fs.makeDirectories(parent)
                     fs.copyIn(local, remote)
                     written += relative
                     files++
@@ -123,61 +137,15 @@ class ModInstaller(
      * 搬完会回读一次目录，确认真的落到了目标位置 —— `mv` 的退出码为 0 不代表结果正确
      * （比如目标已存在时 `mv` 会把目录塞进去），所以状态以回读为准。
      *
-     * @throws ModPackageException 找不到模组、两边同时存在、或搬移后回读不一致。
+     * 重复副本、空目录、旧平铺 DLL 的整理与备份全部交给 [ModStateStore]。
+     *
+     * @throws ModPackageException 找不到模组、目录名非法、或搬移后回读不一致。
      */
-    fun setEnabled(layout: ModLayout, modId: String, folderName: String?, enabled: Boolean, log: (String) -> Unit): ToggleResult {
-        val sourceRoot = if (enabled) layout.disabledModsRoot.absolutePath else layout.modsRoot.absolutePath
-        val targetRoot = if (enabled) layout.modsRoot.absolutePath else layout.disabledModsRoot.absolutePath
-        val folder = folderName ?: modId
-        val from = "$sourceRoot/$folder"
-        val to = "$targetRoot/$folder"
+    fun setEnabled(layout: ModLayout, modId: String, folderName: String?, enabled: Boolean, log: (String) -> Unit): ToggleResult =
+        stateStore.setEnabled(layout, modId, folderName, enabled, log)
 
-        val nested = fs.exists(from)
-        val flatFrom = "$sourceRoot/$modId.dll"
-        val flatTo = "$targetRoot/$modId.dll"
-        val isFlat = !nested && fs.exists(flatFrom)
-
-        if (!nested && !isFlat) {
-            if (fs.exists(to) || fs.exists(flatTo)) {
-                log("$modId 已经在${if (enabled) "启用" else "停用"}状态")
-                return ToggleResult(modId, enabled, changed = false)
-            }
-            throw ModPackageException(
-                "找不到 $modId：${if (enabled) "disabled_mods" else "mods"}/ 里没有它，可能被别的工具挪走了。",
-            )
-        }
-
-        if (nested && fs.exists(to)) {
-            throw ModPackageException(
-                "mods/$folder 与 disabled_mods/$folder 同时存在，先删掉其中一份再切换。",
-            )
-        }
-        if (isFlat && fs.exists(flatTo)) {
-            throw ModPackageException(
-                "mods/$modId.dll 与 disabled_mods/$modId.dll 同时存在，先删掉其中一份再切换。",
-            )
-        }
-
-        fs.makeDirectories(targetRoot)
-
-        if (nested) {
-            fs.move(from, to)
-            if (fs.exists(from) || !fs.exists(to)) {
-                throw ModPackageException("搬移失败：$from → $to（加载器目录可能被占用或不可写）。")
-            }
-        } else {
-            fs.move(flatFrom, flatTo)
-            // sidecar 跟着走，否则目标目录里的模组会退化成「缺元数据」。
-            val sidecarFrom = "$sourceRoot/$modId.json"
-            if (fs.exists(sidecarFrom)) fs.move(sidecarFrom, "$targetRoot/$modId.json")
-            if (fs.exists(flatFrom) || !fs.exists(flatTo)) {
-                throw ModPackageException("搬移失败：$flatFrom → $flatTo（加载器目录可能被占用或不可写）。")
-            }
-        }
-
-        log("$modId ${if (enabled) "已启用" else "已停用"}")
-        return ToggleResult(modId, enabled, changed = true)
-    }
+    /** 启停/安置的统一实现：整理重复目录、空目录、旧平铺文件，只留一份可扫描主体。 */
+    private val stateStore = ModStateStore(fs)
 
     /**
      * 删除一个已安装模组：目录布局删整个 `mods|disabled_mods/<folder>/`，
@@ -218,7 +186,6 @@ class ModInstaller(
         runCatching { if (fs.exists(manifest)) fs.delete(manifest) }
         return true
     }
-
     /** 读/写玩家配置：`configs/<ModId>.json`。 */
     fun readConfig(layout: ModLayout, modId: String): String? =
         fs.readText("${layout.configsRoot.absolutePath}/$modId.json")
@@ -229,13 +196,12 @@ class ModInstaller(
     }
 
     /**
-     * 这个模组该写进 `mods` 还是 `disabled_mods`。
+     * 新装的模组看包里 sidecar 的 `enabled`：显式 false 就作为默认位置落进 `disabled_mods`。
      *
-     * 已经装过的沿用原位置（升级不能把停用的模组悄悄重新启用）；新装的看包里 sidecar
-     * 的 `enabled` —— 显式写 false 就落进 `disabled_mods`，与桌面版导入行为一致。
+     * 已经装过的沿用原位置不在这里判断 —— 那是 [ModStateStore.place] 的职责（升级不会把停用的
+     * 模组悄悄重新启用，双副本时优先保留停用那份）。
      */
-    private fun resolveDisabledRoot(
-        layout: ModLayout,
+    private fun resolveSidecarDisabled(
         modId: String,
         archive: ZipFile,
         entries: List<java.util.zip.ZipEntry>,
@@ -243,21 +209,13 @@ class ModInstaller(
         prefix: String,
         log: (String) -> Unit,
     ): Boolean {
-        val inDisabled = fs.exists("${layout.disabledModsRoot.absolutePath}/$modId")
-        val inEnabled = fs.exists("${layout.modsRoot.absolutePath}/$modId")
-        if (inDisabled && !inEnabled) {
-            log("$modId 原先停用，保持写在 disabled_mods")
-            return true
-        }
-        if (inEnabled) return false
-
         val sidecarName = if (prefix.isEmpty()) "$modId.json" else "$prefix/$modId.json"
         val sidecarEntry = entries.firstOrNull { names.getValue(it) == sidecarName } ?: return false
         return try {
             val text = archive.getInputStream(sidecarEntry).use { it.readBytes().toString(Charsets.UTF_8) }
             val parsed = ModSidecar.parse(text) ?: return false
             if (parsed.enabled == false) {
-                log("$modId 的 sidecar 声明默认停用，装进 disabled_mods")
+                log("$modId 的 sidecar 声明默认停用，安装时作为默认位置")
                 true
             } else {
                 false
@@ -266,7 +224,6 @@ class ModInstaller(
             false
         }
     }
-
     private fun pruneStale(layout: ModLayout, modId: String, keep: Set<String>, log: (String) -> Unit): Int {
         val manifest = fs.readText("${layout.manifestRoot.absolutePath}/packages/$modId.json") ?: return 0
         val previous = Regex("\"([^\"]+)\"").findAll(manifest)
