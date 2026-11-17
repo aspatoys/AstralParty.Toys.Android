@@ -52,16 +52,12 @@ fun OverlaySettings(settings: AppSettings) {
             finally { busy = false }
         }
     }
-    Text("侧栏分组与外观", style = MaterialTheme.typography.titleLarge)
-    Text("保存后同步到当前加载器目录。点「重新读取」可读取游戏内拖拽后的大小，会丢弃本页未保存修改。")
+    Text("侧栏分组与统一大小", style = MaterialTheme.typography.titleLarge)
+    Text("主框为正方形，与独立侧栏等高。透明度请在游戏悬浮窗侧栏的「设置」中调整。")
     if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("不透明度 ${(value.opacity * 100).toInt()}%")
-        Slider(value.opacity, { value = value.copy(opacity = it) }, enabled = !busy, valueRange = 0.25f..1f)
-        Text("宽度 ${(value.width * 100).toInt()}%")
-        Slider(value.width, { value = value.copy(width = it) }, enabled = !busy, valueRange = 0.65f..1.6f)
-        Text("高度 ${(value.height * 100).toInt()}%")
-        Slider(value.height, { value = value.copy(height = it) }, enabled = !busy, valueRange = 0.65f..1.6f)
+        Text("统一大小 ${(value.width * 100).toInt()}%")
+        Slider(value.width, { value = value.copy(width = it, height = it) }, enabled = !busy, valueRange = 0.65f..1.6f)
         OutlinedButton(enabled = !busy, onClick = { value = value.copy(width = 1f, height = 1f) }) { Text("恢复默认大小") }
         Text("自定义分组", style = MaterialTheme.typography.titleMedium)
         Text("变速为固定入口，未分配的模组显示在「其他」；分组顺序就是侧栏顺序。")

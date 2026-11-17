@@ -34,7 +34,11 @@ class OverlayOptionsStore(context: Context, private val fs: LoaderFs = ShizukuLo
         if (!fs.isAvailable() || (!fs.exists("$root/sdk/CesiumLoader.SDK.dll") && !fs.exists("$root/CesiumLoader.SDK.dll"))) return false
         val raw = prefs.getString(id, null) ?: return false
         fs.makeDirectories("$root/data")
-        fs.writeText(path(root), raw)
+        // Opacity is owned by the game settings page; a stale APK draft must not overwrite it.
+        val current = if (fs.exists(path(root))) fs.readText(path(root))?.takeIf(String::isNotBlank)?.let(OverlayOptions::decode) else null
+        val merged = OverlayOptions.decode(raw).let { if (current != null) it.copy(opacity = current.opacity) else it }
+        fs.writeText(path(root), merged.encode())
+        prefs.edit().putString(id, merged.encode()).apply()
         prefs.edit().putBoolean("$id.pending", false).apply()
         return true
     }
