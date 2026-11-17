@@ -25,6 +25,18 @@ namespace CesiumOverlayMod
             sources[source] = new Source { Keys = (int[])keys.Clone(), Start = frame + 1,
                 End = pulse ? frame + 2 : int.MaxValue };
         }
+
+        /// <summary>
+        /// Holds the chord down for a whole number of frames and then releases it, which is what
+        /// mods in "hold to act" mode need: they poll GetKey for a minimum duration instead of
+        /// reacting to a single GetKeyDown edge, so a one-frame pulse produces no visible effect.
+        /// </summary>
+        internal void Press(string source, int[] keys, int frame, int frames)
+        {
+            if (keys == null || keys.Length == 0) return;
+            sources[source] = new Source { Keys = (int[])keys.Clone(), Start = frame + 1,
+                End = frame + Math.Max(2, frames) };
+        }
         internal void Release(string source, int frame)
         {
             Source value;
@@ -47,8 +59,7 @@ namespace CesiumOverlayMod
             up = new HashSet<int>(held); up.ExceptWith(next);
             held = next;
         }
-        internal bool Held(int key) { return held.Contains(key); }
-        internal bool Down(int key) { return down.Contains(key); }
+        internal bool Held(int key) { return held.Contains(key); }        internal bool Down(int key) { return down.Contains(key); }
         internal bool Up(int key) { return up.Contains(key); }
         internal void Clear()
         {

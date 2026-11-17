@@ -1,52 +1,114 @@
+// Hand-rolled tween driver. Deliberately avoids FairyGUI's GTween: the root component is
+// disposed and rebuilt on theme/option changes (GTween would hold dangling targets), and
+// GTween follows Time.timeScale which this very mod rewrites when the player changes speed.
 using System;
+using System.Collections.Generic;
+using UnityEngine;
 
 namespace CesiumOverlayMod
 {
-    /// <summary>Two interruptible real-time tracks: rail leads opening and content leads closing.</summary>
-    internal sealed class OverlayMotion
+    internal enum OverlayEase
     {
-        private sealed class Track
-        {
-            private float from, to, started, duration;
-            private bool spring;
-            internal float Value(float now)
-            {
-                if (duration <= 0) return to;
-                float t = Math.Max(0, Math.Min(1, (now - started) / duration));
-                if (t == 0) return from;
-                if (t == 1) return to;
-                float q = t - 1;
-                float eased = spring ? 1 + 1.6f * q * q * q + .6f * q * q : 1 - (1 - t) * (1 - t) * (1 - t);
-                return from + (to - from) * eased;
-            }
-            internal void Target(float value, float now, float delay, float seconds, bool bounce)
-            {
-                from = Value(now); to = value;
-                started = now + delay;
-                duration = seconds * Math.Abs(to - from);
-                spring = bounce;
-            }
-        }
-        private readonly Track rail = new Track(), main = new Track();
-        internal void SetOpen(bool open, float now)
-        {
-            rail.Target(open ? 1 : 0, now, open ? 0 : .08f, open ? .22f : .18f, false);
-            main.Target(open ? 1 : 0, now, open ? .07f : 0, open ? .28f : .20f, open);
-        }
-        internal float Rail(float now) { return rail.Value(now); }
-        internal float Main(float now) { return main.Value(now); }
+        Linear,
+        SineInOut,
+        CubicOut,
+        CubicIn,
+        QuartOut,
     }
 
-    internal static class OpacitySlider
+    internal static class OverlayEasing
     {
-        internal const float Default = .5f;
-        internal static float At(float x, float start, float width)
+        internal static float Apply(OverlayEase ease, float t)
         {
-            if (float.IsNaN(x) || float.IsInfinity(x) || width <= 0) return Default;
-            float t = Math.Max(0, Math.Min(1, (x - start) / width));
-            return (float)Math.Round((.25f + .75f * t) * 100) / 100;
+            if (t <= 0f) return 0f;
+            if (t >= 1f) return 1f;
+            switch (ease)
+            {
+                case OverlayEase.SineInOut:
+                    return -(Mathf.Cos(Mathf.PI * t) - 1f) * .5f;
+                case OverlayEase.CubicOut:
+                {
+                    float q = 1f - t;
+                    return 1f - q * q * q;
+                }
+                case OverlayEase.CubicIn:
+                    return t * t * t;
+                case OverlayEase.QuartOut:
+                {
+                    float q = 1f - t;
+                    return 1f - q * q * q * q;
+                }
+                default:
+                    return t;
+            }
         }
-        internal static float Position(float value, float start, float width)
-        { return start + Math.Max(0, Math.Min(1, (value - .25f) / .75f)) * Math.Max(0, width); }
+    }
+
+    /// <summary>Frame-driven interpolator over realtimeSinceStartup seconds.</summary>
+    internal sealed class OverlayMotion
+    {
+        private sealed class Entry
+        {
+            internal float From;
+            internal float To;
+            internal float Duration;
+            internal float DelayRemaining;
+            internal float Elapsed;
+            internal OverlayEase Ease;
+            internal Action<float> Apply;
+            internal Action Done;
+        }
+
+        private readonly List<Entry> entries = new List<Entry>();
+
+        internal void Clear() { entries.Clear(); }
+
+        /// <summary>True when nothing is animating, i.e. the layout has settled on its final values.</summary>
+        internal bool Idle => entries.Count == 0;
+
+        internal void To(float from, float to, float duration, OverlayEase ease, Action<float> apply, float delay = 0f, Action done = null)
+        {
+            apply(from);
+            if (duration <= 0f)
+            {
+                if (delay > 0f)
+                {
+                    entries.Add(new Entry { From = from, To = to, Duration = 0f, DelayRemaining = delay, Ease = ease, Apply = apply, Done = done });
+                    return;
+                }
+                apply(to);
+                done?.Invoke();
+                return;
+            }
+            entries.Add(new Entry
+            {
+                From = from, To = to, Duration = duration, DelayRemaining = Mathf.Max(0f, delay),
+                Ease = ease, Apply = apply, Done = done,
+            });
+        }
+
+        internal void Update(float now)
+        {
+            if (entries.Count == 0) return;
+            for (int i = entries.Count - 1; i >= 0; i--)
+            {
+                var entry = entries[i];
+                if (entry.DelayRemaining > 0f)
+                {
+                    entry.DelayRemaining -= Time.unscaledDeltaTime;
+                    continue;
+                }
+                entry.Elapsed += Time.unscaledDeltaTime;
+                float t = Mathf.Clamp01(entry.Elapsed / entry.Duration);
+                if (t < 1f)
+                {
+                    entry.Apply(Mathf.LerpUnclamped(entry.From, entry.To, OverlayEasing.Apply(entry.Ease, t)));
+                    continue;
+                }
+                entries.RemoveAt(i);
+                entry.Apply(entry.To);
+                entry.Done?.Invoke();
+            }
+        }
     }
 }

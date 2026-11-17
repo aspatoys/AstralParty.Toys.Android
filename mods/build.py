@@ -60,11 +60,16 @@ if not args.overlay_only:
     shutil.copy2(api, staged / 'CesiumAndroidApi.dll')
 shutil.copy2(overlay, target / overlay.name)
 shutil.copy2(ROOT / 'CesiumOverlayMod/overlay.png', target / 'overlay.png')
+icons = target / 'icons'
+icons.mkdir(parents=True, exist_ok=True)
+for icon in (ROOT / 'CesiumOverlayMod/icons').glob('*.png'):
+    shutil.copy2(icon, icons / icon.name)
 (target / 'CesiumOverlayMod.json').write_text(json.dumps({
-    'id': 'CesiumOverlayMod', 'name': '吉星工具箱悬浮窗', 'version': '0.9.0',
-    'author': 'TenkinMori / Cesium Android adaptation',
-    'description': '半屏侧边工具箱，首次打开变速页，中文功能分组与游戏内快捷开关。',
-    'sdkVersion': '2.8.6', 'permissions': 141, 'dependencies': [],
+    'id': 'CesiumOverlayMod', 'name': 'Cesium Android FloatingWindow', 'version': '1.0.0',
+    'author': 'TenkinMori/囚鱼玖',
+    'description': '为CesiumLoader安卓端定制的悬浮窗口',
+    'sdkVersion': '2.8.6', 'permissions': 141, 'platforms': ['android'],
+    'dependencies': [],
 }, ensure_ascii=False), encoding='utf-8')
 licenses = target / 'licenses'
 licenses.mkdir(exist_ok=True)
