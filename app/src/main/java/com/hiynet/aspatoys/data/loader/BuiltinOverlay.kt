@@ -22,33 +22,39 @@ class BuiltinOverlay(
         for (id in listOf(ID, SPEED_ID, CAMERA_ID)) {
             require(listAssets("cesium/mods/$id").contains("$id.dll")) { "内置模组缺失：$id" }
         }
-        // Keep a previously disabled mod disabled when updating it.
-        fun hasDll(folder: String, id: String) = fs.exists("$root/$folder/$id/$id.dll") || fs.exists("$root/$folder/$id.dll")
+        // 位置由共享的 ModStateStore 决定：停用的继续保持停用，双副本/空目录/旧平铺布局一并整理。
+        val store = ModStateStore(fs)
         fun copyDirectory(asset: String, remote: String) {
             fs.makeDirectories(remote)
             for (name in listAssets(asset)) {
                 val source = "$asset/$name"
                 val target = "$remote/$name"
                 if (listAssets(source).isNotEmpty()) copyDirectory(source, target)
-                else writeAsset(source, target)
+                else {
+                    if (name.lowercase() in setOf("config.json", "mod.cfg") && fs.exists(target)) continue
+                    writeAsset(source, target)
+                }
             }
         }
         writeAsset("cesium/CesiumAndroidApi.dll", "$root/CesiumAndroidApi.dll")
         for (id in listOf(ID, SPEED_ID, CAMERA_ID)) {
-            val folder = if (hasDll("disabled_mods", id) && !hasDll("mods", id)) "disabled_mods" else "mods"
-            val targetDll = "$root/$folder/$id/$id.dll"
+            val placement = store.place(
+                root = root,
+                modId = id,
+                folderName = id,
+                preferDisabledOnConflict = true,
+                migrateFlatToNested = true,
+                log = log,
+            )
+            val targetDll = "$root/${placement.rootName}/$id/$id.dll"
             // Preserve the previous speed implementation once; player configs remain untouched.
             if ((id == SPEED_ID || id == CAMERA_ID) && fs.exists(targetDll) && !fs.exists("$targetDll.pre-panel")) {
                 val previous = fs.readBytes(targetDll) ?: error("无法备份旧变速模组")
                 writeBytes(previous, "$targetDll.pre-panel")
             }
-            copyDirectory("cesium/mods/$id", "$root/$folder/$id")
-            // The direct installer used flat DLLs. Keep their backups out of the loader's *.dll scan.
-            for (legacyFolder in listOf("mods", "disabled_mods")) {
-                val legacy = "$root/$legacyFolder/$id.dll"
-                if (fs.exists(legacy)) fs.move(legacy, "$legacy.pre-toys")
-            }
-            log("$id 已${if (folder == "disabled_mods") "更新（保持停用）" else "安装"}")
+            copyDirectory("cesium/mods/$id", placement.modDir)
+            // 旧平铺 DLL/sidecar 已由 ModStateStore 退役（改名或备份），这里不再自己搬。
+            log("$id 已${if (placement.disabled) "更新（保持停用）" else "安装"}")
         }
         writeAppearance(root, mode, systemDark)
         log("启动默认 1 倍，仅悬浮窗控制变速；完全重启游戏后生效")

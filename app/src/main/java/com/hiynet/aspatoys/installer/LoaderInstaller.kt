@@ -2,6 +2,7 @@ package com.hiynet.aspatoys.installer
 
 import android.content.Context
 import android.content.res.Configuration
+import com.hiynet.aspatoys.data.loader.BuiltinModDeployer
 import com.hiynet.aspatoys.data.loader.BuiltinOverlay
 import com.hiynet.aspatoys.data.settings.AppSettings
 import com.hiynet.aspatoys.data.loader.ShizukuLoaderFs
@@ -326,37 +327,16 @@ class LoaderInstaller(
         ShizukuLoaderFs().writeText("$LOADER_ROOT/installed.json", payload)
         log("installed.json 已写入（${modIds.size} 个内置模组）")
     }
-
-    /** 发行版的内置模组：按一模组一目录投放，允许 `data/` 等子目录。 */
+    /**
+     * 内置模组投放：位置由 [BuiltinModDeployer]（内部走 [com.hiynet.aspatoys.data.loader.ModStateStore]）决定，
+     * 停用过的继续保持停用，绝不再往 `mods/` 新造一份副本。
+     */
     private fun deployBuiltInMods(log: (String) -> Unit) {
-        val modIds = context.assets.list(MODS_ASSET_DIR).orEmpty()
-            .filterNot { it == "LanguageUnlockMod" }
-            .filterNot { it == BuiltinOverlay.ID }
-            .filterNot { it == BuiltinOverlay.SPEED_ID }
-            .filterNot { it == BuiltinOverlay.CAMERA_ID }
-            .sorted()
-        var files = 0
-
-        fun deployDir(assetDir: String, relativeDir: String) {
-            for (name in context.assets.list(assetDir).orEmpty().sorted()) {
-                val asset = "$assetDir/$name"
-                val relative = "$relativeDir/$name"
-                if (context.assets.list(asset).orEmpty().isNotEmpty()) {
-                    deployDir(asset, relative)
-                } else {
-                    pushAsset(asset, relative)
-                    files++
-                }
-            }
-        }
-
-        for (modId in modIds) {
-            ShizukuShell.exec("mkdir -p " + ShizukuShell.quote("$LOADER_ROOT/mods/$modId"))
-            val names = context.assets.list("$MODS_ASSET_DIR/$modId").orEmpty()
-            if (names.isEmpty()) continue
-            deployDir("$MODS_ASSET_DIR/$modId", "mods/$modId")
-        }
-        log("内置模组 ${modIds.size} 个 / $files 个文件")
+        BuiltinModDeployer(
+            fs = loaderFs,
+            listAssets = { dir -> context.assets.list(dir).orEmpty().toList() },
+            readAsset = { asset -> context.assets.open(asset).use { it.readBytes() } },
+        ).deploy(LOADER_ROOT, log = log)
     }
 
     private fun pushAsset(asset: String, relative: String) {

@@ -137,6 +137,24 @@ class ModInstallerTest {
     // ============================== 启停 ==============================
 
     @Test
+    fun `reinstalling a zip keeps existing local configuration files`() {
+        val dir = File(layout.disabledModsRoot, "DemoMod").apply { mkdirs() }
+        File(dir, "DemoMod.dll").writeText("old")
+        File(dir, "config.json").writeText("player-json")
+        File(dir, "mod.cfg").writeText("player-cfg")
+        val result = installer.install(zipOf(
+            "DemoMod/DemoMod.dll" to "new".toByteArray(),
+            "DemoMod/config.json" to "default-json".toByteArray(),
+            "DemoMod/mod.cfg" to "default-cfg".toByteArray(),
+        ), layout, {})
+        assertTrue(result.disabled)
+        assertEquals("player-json", File(dir, "config.json").readText())
+        assertEquals("player-cfg", File(dir, "mod.cfg").readText())
+        assertEquals("new", File(dir, "DemoMod.dll").readText())
+        assertFalse(File(layout.modsRoot, "DemoMod").exists())
+    }
+
+    @Test
     fun `disable moves the whole folder into disabled mods`() {
         val dir = File(layout.modsRoot, "DemoMod").apply { mkdirs() }
         File(dir, "DemoMod.dll").writeBytes(byteArrayOf(1))
@@ -183,20 +201,21 @@ class ModInstallerTest {
         assertTrue(failure!!.message!!.contains("GhostMod"))
     }
 
+    // 1.3.0 及以前这里会抛「两份同时存在」；1.3.1 起改为自动整理（见下方整理用例）。
     @Test
-    fun `both copies present fails instead of nesting one into the other`() {
+    fun `both copies present is consolidated instead of failing or nesting`() {
         File(layout.modsRoot, "DemoMod").mkdirs()
         File(layout.modsRoot, "DemoMod/DemoMod.dll").writeBytes(byteArrayOf(1))
         File(layout.disabledModsRoot, "DemoMod").mkdirs()
-        File(layout.disabledModsRoot, "DemoMod/DemoMod.dll").writeBytes(byteArrayOf(1))
+        File(layout.disabledModsRoot, "DemoMod/DemoMod.dll").writeBytes(byteArrayOf(2))
 
-        val failure = runCatching {
-            installer.setEnabled(layout, "DemoMod", "DemoMod", enabled = false, log = {})
-        }.exceptionOrNull()
+        val result = installer.setEnabled(layout, "DemoMod", "DemoMod", enabled = false, log = {})
 
-        assertTrue(failure is ModPackageException)
+        assertTrue(result.changed)
+        assertTrue(File(layout.disabledModsRoot, "DemoMod/DemoMod.dll").isFile)
         // 不能变成 disabled_mods/DemoMod/DemoMod
         assertFalse(File(layout.disabledModsRoot, "DemoMod/DemoMod").exists())
+        assertFalse(File(layout.modsRoot, "DemoMod").exists())
     }
 
     @Test
@@ -211,6 +230,118 @@ class ModInstallerTest {
         assertFalse(File(layout.modsRoot, "OldMod.dll").exists())
     }
 
+    // ====================== 1.3.1 重复目录整理 ======================
+
+    @Test
+    fun `enabling with both copies keeps the enabled config and merges unique files`() {
+        val enabled = File(layout.modsRoot, "DemoMod").apply { mkdirs() }
+        File(enabled, "DemoMod.dll").writeBytes(byteArrayOf(1))
+        File(enabled, "config.json").writeText("""{"volume":1}""")
+        val disabled = File(layout.disabledModsRoot, "DemoMod").apply { mkdirs() }
+        File(disabled, "DemoMod.dll").writeBytes(byteArrayOf(2))
+        File(disabled, "config.json").writeText("""{"volume":9}""")
+        File(disabled, "data/extra.txt").apply { parentFile.mkdirs(); writeText("kept") }
+        File(layout.configsRoot, "DemoMod.json").apply { parentFile.mkdirs(); writeText("central") }
+
+        val result = installer.setEnabled(layout, "DemoMod", "DemoMod", enabled = true, log = {})
+
+        assertTrue(result.changed)
+        assertTrue(File(layout.modsRoot, "DemoMod/DemoMod.dll").isFile)
+        assertFalse(File(layout.disabledModsRoot, "DemoMod").exists())
+        // 目标目录同名文件优先；源侧独有文件合入。
+        assertEquals("""{"volume":1}""", File(layout.modsRoot, "DemoMod/config.json").readText())
+        assertEquals("kept", File(layout.modsRoot, "DemoMod/data/extra.txt").readText())
+        // 集中配置从不改动。
+        assertEquals("central", File(layout.configsRoot, "DemoMod.json").readText())
+        // 原始副本进 backups，且不在 mods/disabled_mods 扫描范围内。
+        val backups = File(root, "backups/mod-state/DemoMod").listFiles().orEmpty()
+        assertEquals(1, backups.size)
+        assertTrue(File(backups[0], "DemoMod/config.json").readText() == """{"volume":9}""")
+        // 没有把目录塞进同名目录。
+        assertFalse(File(layout.modsRoot, "DemoMod/DemoMod").exists())
+    }
+
+    @Test
+    fun `disabling with both copies keeps the disabled copy and one scannable body`() {
+        val enabled = File(layout.modsRoot, "DemoMod").apply { mkdirs() }
+        File(enabled, "DemoMod.dll").writeBytes(byteArrayOf(1))
+        File(enabled, "only-enabled.txt").writeText("a")
+        val disabled = File(layout.disabledModsRoot, "DemoMod").apply { mkdirs() }
+        File(disabled, "DemoMod.dll").writeBytes(byteArrayOf(2))
+
+        installer.setEnabled(layout, "DemoMod", "DemoMod", enabled = false, log = {})
+
+        assertTrue(File(layout.disabledModsRoot, "DemoMod/DemoMod.dll").isFile)
+        assertFalse(File(layout.modsRoot, "DemoMod").exists())
+        assertEquals(byteArrayOf(2).toList(), File(layout.disabledModsRoot, "DemoMod/DemoMod.dll").readBytes().toList())
+        assertEquals("a", File(layout.disabledModsRoot, "DemoMod/only-enabled.txt").readText())
+        assertTrue(File(root, "backups/mod-state/DemoMod").listFiles().orEmpty().isNotEmpty())
+    }
+
+    @Test
+    fun `an empty active directory does not resurrect a disabled mod`() {
+        File(layout.modsRoot, "DemoMod").mkdirs()
+        val disabled = File(layout.disabledModsRoot, "DemoMod").apply { mkdirs() }
+        File(disabled, "DemoMod.dll").writeBytes(byteArrayOf(1))
+
+        installer.setEnabled(layout, "DemoMod", "DemoMod", enabled = false, log = {})
+
+        assertTrue(File(layout.disabledModsRoot, "DemoMod/DemoMod.dll").isFile)
+        assertFalse(File(layout.modsRoot, "DemoMod").exists())
+    }
+
+    @Test
+    fun `enabling an empty disabled directory is a readable failure not a nested copy`() {
+        val enabled = File(layout.modsRoot, "DemoMod").apply { mkdirs() }
+        File(enabled, "DemoMod.dll").writeBytes(byteArrayOf(1))
+        File(layout.disabledModsRoot, "DemoMod").mkdirs()
+
+        installer.setEnabled(layout, "DemoMod", "DemoMod", enabled = true, log = {})
+
+        assertTrue(File(layout.modsRoot, "DemoMod/DemoMod.dll").isFile)
+        assertFalse(File(layout.modsRoot, "DemoMod/DemoMod").exists())
+        assertFalse(File(layout.disabledModsRoot, "DemoMod").exists())
+    }
+
+    @Test
+    fun `flat legacy dll next to a nested copy is retired out of the scan`() {
+        val enabled = File(layout.modsRoot, "DemoMod").apply { mkdirs() }
+        File(enabled, "DemoMod.dll").writeBytes(byteArrayOf(1))
+        File(layout.disabledModsRoot, "DemoMod.dll").writeBytes(byteArrayOf(2))
+
+        installer.setEnabled(layout, "DemoMod", "DemoMod", enabled = false, log = {})
+
+        assertFalse(File(layout.disabledModsRoot, "DemoMod.dll").exists())
+        assertTrue(File(layout.disabledModsRoot, "DemoMod/DemoMod.dll").isFile)
+        assertFalse(File(layout.modsRoot, "DemoMod").exists())
+    }
+
+    @Test
+    fun `toggling back and forth after consolidation stays stable`() {
+        File(layout.modsRoot, "DemoMod").mkdirs()
+        File(layout.modsRoot, "DemoMod/DemoMod.dll").writeBytes(byteArrayOf(1))
+        File(layout.disabledModsRoot, "DemoMod").mkdirs()
+        File(layout.disabledModsRoot, "DemoMod/DemoMod.dll").writeBytes(byteArrayOf(1))
+
+        repeat(3) {
+            installer.setEnabled(layout, "DemoMod", "DemoMod", enabled = false, log = {})
+            installer.setEnabled(layout, "DemoMod", "DemoMod", enabled = true, log = {})
+        }
+
+        assertTrue(File(layout.modsRoot, "DemoMod/DemoMod.dll").isFile)
+        assertFalse(File(layout.disabledModsRoot, "DemoMod").exists())
+        assertFalse(File(layout.modsRoot, "DemoMod/DemoMod").exists())
+    }
+
+    @Test
+    fun `path traversal folder names are rejected`() {
+        for (bad in listOf("../evil", "..", "a/b", "C:evil")) {
+            val failure = runCatching {
+                installer.setEnabled(layout, "DemoMod", bad, enabled = false, log = {})
+            }.exceptionOrNull()
+            assertTrue("$bad 应被拒绝", failure is ModPackageException)
+        }
+    }
     // ============================== 辅助 ==============================
 
     private fun zipOf(vararg files: Pair<String, ByteArray>): File {
