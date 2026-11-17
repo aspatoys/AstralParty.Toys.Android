@@ -30,14 +30,22 @@ namespace CesiumOverlayMod
             Instance = null;
         }
         internal bool Installed { get { return ReferenceEquals(InputService.Backend, this); } }
-        private static bool Blocked
+        /// <summary>
+        /// True while the game can accept synthetic keys: the window has focus and no text
+        /// field is capturing input.
+        /// <para>
+        /// [UiService.ShouldBlockGameInput] is deliberately NOT part of this. It turns true
+        /// whenever the overlay itself is on screen, which is precisely when the key-mapping
+        /// buttons are pressed — including it made every mapping a silent no-op.
+        /// </para>
+        /// </summary>
+        private static bool AcceptsKeys
         {
-            get { return !Application.isFocused || InputService.IsKeyboardCaptured || UiService.ShouldBlockGameInput ||
-                (GRoot.inst != null && GRoot.inst.focus is GTextInput); }
+            get { return Application.isFocused && !(GRoot.inst != null && GRoot.inst.focus is GTextInput); }
         }
         internal void Tick()
         {
-            if (!Installed || Blocked) { state.Clear(); return; }
+            if (!Installed || !AcceptsKeys) { state.Clear(); return; }
             state.Advance(Time.frameCount);
         }
         internal void Clear() { state.Clear(); }
@@ -45,11 +53,28 @@ namespace CesiumOverlayMod
         internal void Send(string source, string chord, bool hold)
         {
             if (!Installed) throw new InvalidOperationException("输入后端已被其他模组替换，请重启游戏。");
-            if (Blocked) throw new InvalidOperationException("请结束文字输入或关闭占用输入的窗口，再使用映射。");
+            if (!AcceptsKeys) throw new InvalidOperationException("请结束文字输入或回到游戏画面后再使用映射。");
             int[] keys;
             if (!TryParse(chord, out keys)) throw new InvalidOperationException("键名无效，例如 H、F3 或 LeftAlt+H；None 表示不绑定。");
             if (hold && state.HasSource(source)) state.Release(source, Time.frameCount);
-            else state.Press(source, keys, Time.frameCount, !hold);
+            else if (hold) state.Press(source, keys, Time.frameCount, false);
+            else state.Press(source, keys, Time.frameCount, TapFrames());
+        }
+
+        /// <summary>
+        /// How many frames a synthetic "tap" keeps the chord down.
+        /// <para>
+        /// One frame is invisible to a mod that runs in hold mode: HideHudMod ships
+        /// pressMode=Hold with holdSeconds=0.35 and CharacterTransparencyMod ships
+        /// holdMode=true, so both poll GetKey for a minimum duration and never reacted to the
+        /// old single-frame pulse. Holding for roughly 0.55s satisfies them while still
+        /// reading as one press to mods that only watch GetKeyDown.
+        /// </para>
+        /// </summary>
+        private static int TapFrames()
+        {
+            float step = Mathf.Max(Time.unscaledDeltaTime, .001f);
+            return Mathf.Clamp(Mathf.RoundToInt(.55f / step), 6, 180);
         }
         internal static bool TryParse(string chord, out int[] keys)
         {

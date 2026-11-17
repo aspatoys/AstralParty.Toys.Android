@@ -44,8 +44,8 @@ fun OverlaySettings(settings: AppSettings) {
         val snapshot = value.normalized()
         scope.launch {
             try {
-                val synced = withContext(Dispatchers.IO) { store.save(root, snapshot) }
-                value = snapshot
+                val (synced, saved) = withContext(Dispatchers.IO) { store.save(root, snapshot) to store.read(root) }
+                value = saved
                 notice = if (synced) "已同步到游戏，约一秒后生效。首次使用新版请先更新悬浮窗并重启游戏。"
                     else "已保存在 APK，连接 Shizuku / Root 并安装加载器后，重开应用即可同步。"
             } catch (error: Exception) { notice = "已保存在 APK；同步失败：${error.message}。连接后会重试。" }
@@ -53,14 +53,23 @@ fun OverlaySettings(settings: AppSettings) {
         }
     }
     Text("侧栏分组与统一大小", style = MaterialTheme.typography.titleLarge)
-    Text("主框为正方形，与独立侧栏等高。透明度请在游戏悬浮窗侧栏的「设置」中调整。")
+    Text("六页侧栏与主框独立显示。透明度请在游戏悬浮窗侧栏的「设置」中调整。")
     if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("统一大小 ${(value.width * 100).toInt()}%")
         Slider(value.width, { value = value.copy(width = it, height = it) }, enabled = !busy, valueRange = 0.65f..1.6f)
         OutlinedButton(enabled = !busy, onClick = { value = value.copy(width = 1f, height = 1f) }) { Text("恢复默认大小") }
+        Text("字体大小 ${(value.fontScale * 100).toInt()}%")
+        Slider(value.fontScale, { value = value.copy(fontScale = it) }, enabled = !busy, valueRange = 0.8f..1.4f)
+        Text(
+            if (value.idleSeconds <= 0f) "闲置淡出 已关闭"
+            else "闲置淡出 闲置 ${value.idleSeconds.toInt()} 秒后变淡"
+        )
+        Slider(value.idleSeconds, { value = value.copy(idleSeconds = it) }, enabled = !busy, valueRange = 0f..15f)
+        Text("闲置浓度 ${(value.idleOpacity * 100).toInt()}%")
+        Slider(value.idleOpacity, { value = value.copy(idleOpacity = it) }, enabled = !busy, valueRange = 0.15f..1f)
         Text("自定义分组", style = MaterialTheme.typography.titleMedium)
-        Text("变速为固定入口，未分配的模组显示在「其他」；分组顺序就是侧栏顺序。")
+        Text("保留已有分组数据；新版侧栏固定为六页，分组不会改变导航顺序。")
         value.groups.forEachIndexed { index, group ->
             OutlinedTextField(group.name, { text ->
                 value = value.copy(groups = value.groups.toMutableList().apply { set(index, group.copy(name = text.take(30))) })

@@ -19,6 +19,27 @@ namespace CesiumAndroid
     }
 
     /// <summary>
+    /// 悬浮窗「功能」页里的一条快捷项。
+    /// <para>
+    /// 和 <see cref="ActionItem"/> 的区别：动作项挂在某个 mod 的详情页里，必须先找到那个 mod
+    /// 才能看见；快捷项直接出现在「功能」页，适合「面板显示 / 隐藏」这类随时要按的开关。
+    /// </para>
+    /// </summary>
+    public sealed class ShortcutItem
+    {
+        public string ModId;
+        public string Id;
+        public string Label;
+        /// <summary>副标题，例如当前状态或说明，留空则不显示。</summary>
+        public string Detail;
+        /// <summary>非空时这一行渲染成开关，并按返回值着色。</summary>
+        public Func<bool> Get;
+        /// <summary>点击时执行；开关行的点击也会调用它（如果给了）。</summary>
+        public Action Run;
+        public bool IsToggle { get { return Get != null; } }
+    }
+
+    /// <summary>
     /// Android 端开发者接口。mod 引用 CesiumAndroidApi.dll 后即可使用。
     /// </summary>
     public static class AndroidApi
@@ -27,6 +48,7 @@ namespace CesiumAndroid
         public static string Root { get { return Environment.GetEnvironmentVariable("CESIUM_LOADER_DIR") ?? Path.Combine(Application.persistentDataPath, "CesiumLoader"); } }
 
         private static readonly List<ActionItem> _actions = new List<ActionItem>();
+        private static readonly List<ShortcutItem> _shortcuts = new List<ShortcutItem>();
         private static readonly Dictionary<string, string> _modNames = new Dictionary<string, string>();
         private static string _currentModId = "";
 
@@ -131,6 +153,7 @@ namespace CesiumAndroid
         public static void ClearActions()
         {
             _actions.Clear();
+            _shortcuts.Clear();
             _modNames.Clear();
         }
 
@@ -186,6 +209,74 @@ namespace CesiumAndroid
 
         public static string LogsDirectory { get { return Path.Combine(Root, "logs"); } }
         public static string DataDirectory { get { return Path.Combine(Root, "data"); } }
+
+        /// <summary>已注册的动作项（每个 mod 的详情页内容）。</summary>
+        public static List<ActionItem> GetActionsOf(string modId) { return GetActions(modId); }
+
+        /// <summary>已注册的「功能」页快捷项。</summary>
+        public static List<ShortcutItem> Shortcuts { get { return _shortcuts; } }
+
+        public static List<ShortcutItem> GetShortcuts(string modId)
+        {
+            List<ShortcutItem> result = new List<ShortcutItem>();
+            for (int i = 0; i < _shortcuts.Count; i++)
+            {
+                if (string.Equals(_shortcuts[i].ModId, modId, StringComparison.OrdinalIgnoreCase))
+                    result.Add(_shortcuts[i]);
+            }
+            return result;
+        }
+
+        private static void PutShortcut(ShortcutItem item)
+        {
+            for (int i = 0; i < _shortcuts.Count; i++)
+                if (string.Equals(_shortcuts[i].ModId, item.ModId, StringComparison.OrdinalIgnoreCase) && _shortcuts[i].Id == item.Id)
+                { _shortcuts[i] = item; return; }
+            _shortcuts.Add(item);
+        }
+
+        /// <summary>
+        /// 往「功能」页放一条快捷开关。读取当前状态用于着色，[run] 负责真正切换。
+        /// </summary>
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        public static void RegisterShortcut(string id, string label, Func<bool> get, Action run, string detail = null)
+        {
+            RegisterShortcut(null, id, label, get, run, detail);
+        }
+
+        public static void RegisterShortcut(string modId, string id, string label, Func<bool> get, Action run, string detail = null)
+        {
+            PutShortcut(new ShortcutItem
+            {
+                ModId = string.IsNullOrEmpty(modId) ? CallerModId(Assembly.GetCallingAssembly()) : modId,
+                Id = id,
+                Label = label,
+                Detail = detail,
+                Get = get,
+                Run = run
+            });
+            Log("[api] shortcut " + modId + "/" + id);
+        }
+
+        /// <summary>往「功能」页放一条普通按钮（非开关）。</summary>
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        public static void RegisterShortcutButton(string id, string label, Action run, string detail = null)
+        {
+            RegisterShortcutButton(null, id, label, run, detail);
+        }
+
+        public static void RegisterShortcutButton(string modId, string id, string label, Action run, string detail = null)
+        {
+            PutShortcut(new ShortcutItem
+            {
+                ModId = string.IsNullOrEmpty(modId) ? CallerModId(Assembly.GetCallingAssembly()) : modId,
+                Id = id,
+                Label = label,
+                Detail = detail,
+                Run = run
+            });
+            Log("[api] shortcut button " + modId + "/" + id);
+        }
 
         public static string GetLoaderPath(params string[] subPaths)
         {

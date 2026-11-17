@@ -36,7 +36,7 @@ namespace CesiumOverlayMod
         }
     }
 
-    /// <summary>Restoring original speed retains the multiplier only within this game session.</summary>
+    /// <summary>Session speed state; choosing original speed retains the latest multiplier.</summary>
     internal sealed class SpeedResumeState
     {
         internal bool Suspended { get; private set; }
@@ -45,7 +45,9 @@ namespace CesiumOverlayMod
         {
             if (double.IsNaN(value) || double.IsInfinity(value) || value < 1 || value > 10)
                 throw new ArgumentOutOfRangeException(nameof(value));
-            apply(value); Saved = value; Suspended = false;
+            apply(value);
+            if (value > 1.0001) Saved = value;
+            Suspended = value <= 1.0001 && Saved > 1.0001;
         }
         internal void Toggle(double current, Action<double> apply)
         {
