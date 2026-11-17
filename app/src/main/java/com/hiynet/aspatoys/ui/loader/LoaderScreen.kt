@@ -20,6 +20,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -37,6 +39,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import com.hiynet.aspatoys.data.updates.Updates
+import com.hiynet.aspatoys.ui.settings.LoaderUpdateCard
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -65,12 +70,16 @@ fun LoaderScreen(
     onLoaderChanged: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val updates = remember { Updates.get(context) }
+    var pendingAction by remember { mutableStateOf<String?>(null) }
     val permissionVersion = ShizukuShell.permissionVersion
 
     var status by remember { mutableStateOf<LoaderInstaller.Status?>(null) }
     var busy by remember { mutableStateOf(false) }
     var logs by remember { mutableStateOf<List<String>>(emptyList()) }
     var mode by remember { mutableStateOf(settings.privilegeMode) }
+    val operationBusy = busy || updates.loaderBusy
 
     fun refresh() {
         scope.launch {
@@ -81,7 +90,7 @@ fun LoaderScreen(
     }
 
     fun run(action: String, block: ((String) -> Unit) -> LoaderInstaller.Status) {
-        if (busy) return
+        if (busy || updates.loaderBusy) return
         busy = true
         logs = emptyList()
         scope.launch {
@@ -98,6 +107,7 @@ fun LoaderScreen(
             } finally {
                 busy = false
                 refresh()
+                updates.refreshInstalled()
             }
         }
     }
@@ -117,7 +127,7 @@ fun LoaderScreen(
         ToysSection("访问权限") {
             PrivilegeModeCard(
                 mode = mode,
-                enabled = !busy,
+                enabled = !operationBusy,
                 onModeChanged = { next ->
                     mode = next
                     onModeChanged(next)
@@ -130,43 +140,53 @@ fun LoaderScreen(
                             RootShell.reset()
                             refresh()
                         },
-                        enabled = !busy,
+                        enabled = !operationBusy,
                     ) { Text("重新检测 Root") }
                 } else {
-                    OutlinedButton(onClick = { ShizukuShell.requestPermission() }, enabled = !busy) {
+                    OutlinedButton(onClick = { ShizukuShell.requestPermission() }, enabled = !operationBusy) {
                         Text("授权 Shizuku")
                     }
                 }
-                OutlinedButton(onClick = { refresh() }, enabled = !busy) { Text("刷新") }
+                OutlinedButton(onClick = { refresh() }, enabled = !operationBusy) { Text("刷新") }
             }
         }
 
-        ToysSection("安装与还原") {
-                Text("安装前请完全退出游戏。还原后将恢复原版资源。", style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { run("安装") { log -> installer.install(log) } },
-                    enabled = !busy && (status?.shizukuGranted == true),
-                ) { Text("安装加载器") }
-                OutlinedButton(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { run("还原") { log -> installer.restore(log) } },
-                    enabled = !busy && (status?.hasBackup == true),
-                ) { Text("还原原包") }
-            }
-
-            AnimatedVisibility(
-                visible = busy,
-                enter = fadeIn() + slideInVertically { -it / 3 },
-                exit = fadeOut(),
-            ) {
+        LoaderUpdateCard(
+            enabled = !busy,
+            onUpdated = { refresh(); onLoaderChanged() },
+        ) {
+            Text("操作前请完全退出游戏。禁用会保留文件；卸载会删除模组、配置和预设。",
+                style = MaterialTheme.typography.bodySmall)
+            Button(modifier = Modifier.fillMaxWidth(),
+                enabled = !operationBusy && status?.shizukuGranted == true,
+                onClick = { pendingAction = "安装内置加载器" }) { Text("安装内置加载器") }
+            val canToggle = status?.let { it.supportedVersion && it.loaderPayload } == true
+            val toggleLabel = if (status?.injected == true) "禁用加载器" else "启用加载器"
+            OutlinedButton(modifier = Modifier.fillMaxWidth(),
+                enabled = !operationBusy && canToggle,
+                onClick = { pendingAction = toggleLabel }) { Text(toggleLabel) }
+            OutlinedButton(modifier = Modifier.fillMaxWidth(),
+                enabled = !operationBusy && status?.hasBackup == true,
+                onClick = { pendingAction = "卸载加载器" }) { Text("卸载加载器") }
+            AnimatedVisibility(visible = busy, enter = fadeIn() + slideInVertically { -it / 3 }, exit = fadeOut()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     CircularProgressIndicator(modifier = Modifier.padding(4.dp))
                     Text("执行中…", style = MaterialTheme.typography.bodySmall)
                 }
             }
+        }
+
+        Column(Modifier.fillMaxWidth().toysPanel().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("内置悬浮窗", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(
+                "游戏内头像入口，提供模组操作与变速控制。每次启动为 1 倍，仅通过悬浮窗变速。窗口跟随设置中的主题；无需系统悬浮窗权限。更新后请完全重启游戏。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(
+                onClick = { run("安装 / 更新悬浮窗") { log -> installer.installOverlay(log) } },
+                enabled = !operationBusy && (status?.shizukuGranted == true),
+            ) { Text("安装 / 更新悬浮窗") }
         }
 
         ToysSection("运行状态") {
@@ -196,6 +216,11 @@ fun LoaderScreen(
                     StatusLine("缓存包指纹", current.bundleSha256?.take(16) ?: "—")
                     StatusLine("缓存状态", current.cacheState)
                     StatusLine("载荷", if (current.loaderPayload) "已就位" else "缺失")
+                    StatusLine("加载器", when {
+                        current.injected -> "已启用"
+                        current.supportedVersion && current.loaderPayload -> "已禁用（保留本地文件）"
+                        else -> "未安装或状态未知"
+                    })
                     StatusLine("原包恢复", if (current.hasBackup) "已校验原包可用" else "无可用恢复来源")
                     current.ownershipWarning?.let { warning ->
                         Spacer(Modifier.height(2.dp))
@@ -229,19 +254,6 @@ fun LoaderScreen(
 
         WorkspaceCard(mods = mods, onOpenSettings = onOpenSettings)
 
-        Column(Modifier.fillMaxWidth().toysPanel().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("内置悬浮窗", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            Text(
-                "游戏内头像入口，提供模组操作与变速控制。每次启动为 1 倍，仅通过悬浮窗变速。窗口跟随设置中的主题；无需系统悬浮窗权限。更新后请完全重启游戏。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            OutlinedButton(
-                onClick = { run("安装 / 更新悬浮窗") { log -> installer.installOverlay(log) } },
-                enabled = !busy && (status?.shizukuGranted == true),
-            ) { Text("安装 / 更新悬浮窗") }
-        }
-
         AnimatedVisibility(visible = logs.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
             Column {
                 HorizontalDivider()
@@ -256,6 +268,27 @@ fun LoaderScreen(
             }
         }
     }
+    pendingAction?.let { action ->
+        AlertDialog(onDismissRequest = { pendingAction = null },
+            title = { Text("$action？") },
+            text = { Text(when (action) {
+                "卸载加载器" -> "将先恢复并校验游戏原包，再永久删除加载器、全部模组、配置、皮肤、预设、日志和安装备份。请先完全退出游戏。"
+                "禁用加载器" -> "暂停游戏内加载，保留所有模组、配置和预设。请先完全退出游戏；下次启动生效。"
+                "启用加载器" -> "恢复游戏内加载，继续使用现有加载器版本、模组和配置。请先完全退出游戏。"
+                else -> "安装 APK 内置版本；会覆盖 SDK 和内置模组，已有用户配置保留。请先完全退出游戏。"
+            }) },
+            confirmButton = { TextButton(enabled = !operationBusy, onClick = {
+                pendingAction = null
+                run(action) { log -> when (action) {
+                    "卸载加载器" -> installer.uninstall(log)
+                    "禁用加载器" -> installer.setEnabled(false, log)
+                    "启用加载器" -> installer.setEnabled(true, log)
+                    else -> installer.install(log)
+                } }
+            }) { Text(if (action == "卸载加载器") "永久卸载" else "已退出游戏，继续") } },
+            dismissButton = { TextButton(onClick = { pendingAction = null }) { Text("取消") } })
+    }
+
 }
 
 /**

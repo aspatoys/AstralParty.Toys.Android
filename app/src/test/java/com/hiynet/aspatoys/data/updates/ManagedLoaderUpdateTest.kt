@@ -160,15 +160,97 @@ class ManagedLoaderUpdateTest {
         assertEquals(1, fs.deletes) // only the finished transaction directory is removed
     }
 
-    @Test fun `install refuses a disabled mod that is also active`() = withTemp { dir ->
+    @Test fun `install keeps a mod that exists in both mods and disabled_mods`() = withTemp { dir ->
+        val fs = MemoryFs()
+        val installer = ManagedLoaderUpdate(fs)
+        val pkg = installer.prepare(zip(dir, payload), "3.8.7", File(dir, "stage"))
+        fs.files["$root/sdk/CesiumLoader.SDK.dll"] = text("old-sdk")
+        fs.files["$root/mods/FontMod/FontMod.dll"] = text("active")
+        fs.files["$root/disabled_mods/FontMod/FontMod.dll"] = text("disabled")
+        fs.files["$root/mods/FontMod/FontMod.json"] = text("active-meta")
+        fs.files["$root/disabled_mods/FontMod/FontMod.json"] = text("disabled-meta")
+        fs.files["$root/mods/FontMod/data/zh.pack"] = text("active-pack")
+        fs.files["$root/disabled_mods/FontMod/data/zh.pack"] = text("disabled-pack")
+        fs.files["$root/mods/FontMod/config.json"] = text("active-config")
+        fs.files["$root/disabled_mods/FontMod/config.json"] = text("disabled-config")
+
+        val result = installer.install(root, pkg)
+
+        assertEquals(listOf("FontMod"), result.skippedLocalMods)
+        // The whole local mod is preserved byte for byte on both sides, including resources and configs.
+        assertEquals("active", fs.files["$root/mods/FontMod/FontMod.dll"]!!.toString(Charsets.UTF_8))
+        assertEquals("disabled", fs.files["$root/disabled_mods/FontMod/FontMod.dll"]!!.toString(Charsets.UTF_8))
+        assertEquals("active-meta", fs.files["$root/mods/FontMod/FontMod.json"]!!.toString(Charsets.UTF_8))
+        assertEquals("disabled-meta", fs.files["$root/disabled_mods/FontMod/FontMod.json"]!!.toString(Charsets.UTF_8))
+        assertEquals("active-pack", fs.files["$root/mods/FontMod/data/zh.pack"]!!.toString(Charsets.UTF_8))
+        assertEquals("disabled-pack", fs.files["$root/disabled_mods/FontMod/data/zh.pack"]!!.toString(Charsets.UTF_8))
+        assertEquals("active-config", fs.files["$root/mods/FontMod/config.json"]!!.toString(Charsets.UTF_8))
+        assertEquals("disabled-config", fs.files["$root/disabled_mods/FontMod/config.json"]!!.toString(Charsets.UTF_8))
+        assertTrue(fs.files.keys.none { it.contains("FontMod/FontMod.dll.cesium-tmp") })
+        // Everything else still updates: SDK, the untouched second mod, and the version record.
+        assertEquals("sdk", fs.files["$root/sdk/CesiumLoader.SDK.dll"]!!.toString(Charsets.UTF_8))
+        assertEquals("pve", fs.files["$root/mods/PvePanelMod/PvePanelMod.dll"]!!.toString(Charsets.UTF_8))
+        assertTrue(fs.files["$root/installed.json"]!!.toString(Charsets.UTF_8).contains("\"3.8.7\""))
+        assertTrue(fs.files.keys.none { it.contains(".toys-loader-update-") })
+    }
+
+    @Test fun `install keeps a conflict between flat and folder layouts`() = withTemp { dir ->
         val fs = MemoryFs()
         val installer = ManagedLoaderUpdate(fs)
         val pkg = installer.prepare(zip(dir, payload), "3.8.7", File(dir, "stage"))
         fs.files["$root/sdk/CesiumLoader.SDK.dll"] = text("sdk")
+        // Flat legacy files in the enabled tree versus a real folder in the disabled tree.
+        fs.files["$root/mods/FontMod.dll"] = text("flat-dll")
+        fs.files["$root/mods/FontMod.json"] = text("flat-meta")
+        fs.files["$root/disabled_mods/FontMod/FontMod.dll"] = text("folder-dll")
+
+        val result = installer.install(root, pkg)
+
+        assertEquals(listOf("FontMod"), result.skippedLocalMods)
+        assertEquals("flat-dll", fs.files["$root/mods/FontMod.dll"]!!.toString(Charsets.UTF_8))
+        assertEquals("flat-meta", fs.files["$root/mods/FontMod.json"]!!.toString(Charsets.UTF_8))
+        assertEquals("folder-dll", fs.files["$root/disabled_mods/FontMod/FontMod.dll"]!!.toString(Charsets.UTF_8))
+        assertFalse(fs.files.containsKey("$root/mods/FontMod/FontMod.dll"))
+        assertEquals("sdk", fs.files["$root/sdk/CesiumLoader.SDK.dll"]!!.toString(Charsets.UTF_8))
+        assertEquals("pve", fs.files["$root/mods/PvePanelMod/PvePanelMod.dll"]!!.toString(Charsets.UTF_8))
+    }
+
+    @Test fun `install keeps a disabled mod disabled without reporting a conflict`() = withTemp { dir ->
+        val fs = MemoryFs()
+        val installer = ManagedLoaderUpdate(fs)
+        val pkg = installer.prepare(zip(dir, payload), "3.8.7", File(dir, "stage"))
+        fs.files["$root/sdk/CesiumLoader.SDK.dll"] = text("sdk")
+        fs.files["$root/disabled_mods/FontMod/FontMod.dll"] = text("old-disabled")
+        fs.files["$root/disabled_mods/FontMod/FontMod.json"] = text("{\"user\":true}")
+
+        val result = installer.install(root, pkg)
+
+        assertTrue(result.skippedLocalMods.isEmpty())
+        // Only the disabled *location* is preserved: a mod without an enabled twin is updated in place,
+        // so its manifest follows the new DLL version instead of keeping a stale one.
+        assertFalse(fs.files.containsKey("$root/mods/FontMod/FontMod.dll"))
+        assertEquals("font-dll", fs.files["$root/disabled_mods/FontMod/FontMod.dll"]!!.toString(Charsets.UTF_8))
+        assertEquals("{\"id\":\"FontMod\"}", fs.files["$root/disabled_mods/FontMod/FontMod.json"]!!.toString(Charsets.UTF_8))
+    }
+
+    @Test fun `failed install leaves both copies of a conflicting mod untouched`() = withTemp { dir ->
+        val fs = MemoryFs()
+        val installer = ManagedLoaderUpdate(fs)
+        val pkg = installer.prepare(zip(dir, payload), "3.8.7", File(dir, "stage"))
+        fs.files["$root/sdk/CesiumLoader.SDK.dll"] = text("old-sdk")
+        fs.files["$root/installed.json"] = text("{\"loaderVersion\":\"3.7.0\"}")
         fs.files["$root/mods/FontMod/FontMod.dll"] = text("active")
         fs.files["$root/disabled_mods/FontMod/FontMod.dll"] = text("disabled")
-        try { installer.install(root, pkg); fail("conflict accepted") } catch (_: Exception) { }
+        fs.files["$root/mods/FontMod/config.json"] = text("active-config")
+        fs.failCopy = { it.contains("PvePanelMod/PvePanelMod.dll") }
+        try { installer.install(root, pkg); fail("copy failure ignored") } catch (_: Exception) { }
+
         assertEquals("active", fs.files["$root/mods/FontMod/FontMod.dll"]!!.toString(Charsets.UTF_8))
+        assertEquals("disabled", fs.files["$root/disabled_mods/FontMod/FontMod.dll"]!!.toString(Charsets.UTF_8))
+        assertEquals("active-config", fs.files["$root/mods/FontMod/config.json"]!!.toString(Charsets.UTF_8))
+        assertEquals("old-sdk", fs.files["$root/sdk/CesiumLoader.SDK.dll"]!!.toString(Charsets.UTF_8))
+        assertFalse(fs.files["$root/installed.json"]!!.toString(Charsets.UTF_8).contains("3.8.7"))
+        assertTrue(fs.files.keys.none { it.contains(".toys-loader-update-") })
     }
 
     @Test fun `install requires an installed loader and an available device`() = withTemp { dir ->

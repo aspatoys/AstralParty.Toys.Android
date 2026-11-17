@@ -171,7 +171,7 @@ class Updates private constructor(context: Context) {
         scope.launch {
             val stage = File(app.cacheDir, "updates/loader-stage-${java.util.UUID.randomUUID()}")
             try {
-                withContext(Dispatchers.IO) {
+                val result = withContext(Dispatchers.IO) {
                     check(fs.isAvailable()) { "请先在加载器页连接 Shizuku / Root。" }
                     github.download(release, zipFile, cancel) { count, total -> loaderStatus = "下载加载器 ${if (total > 0) "${count * 100 / total}%" else "${count / 1024} KB"}" }
                     val installer = ManagedLoaderUpdate(fs)
@@ -179,7 +179,12 @@ class Updates private constructor(context: Context) {
                     cancel.throwIfCancelled()
                     withContext(NonCancellable) { installer.install(root, pkg) { loaderStatus = it } }
                 }
-                loaderStatus = "加载器 ${release.version} 已更新；请完全重启游戏。安卓变速与相机已保留。"
+                loaderStatus = buildString {
+                    append("加载器 ${release.version} 已更新；请完全重启游戏。安卓变速与相机已保留。")
+                    // Conflicts stay entirely local; the user decides which copy survives.
+                    if (result.skippedLocalMods.isNotEmpty())
+                        append(" 以下模组在启用和停用目录中同时存在，已保留本地文件并跳过更新：${result.skippedLocalMods.joinToString("、")}。")
+                }
                 refreshInstalled(); onUpdated()
             } catch (error: Exception) { loaderStatus = "加载器更新失败：${error.message}" }
             finally { withContext(Dispatchers.IO) { stage.deleteRecursively() }; loaderBusy = false; loaderCancel = null }

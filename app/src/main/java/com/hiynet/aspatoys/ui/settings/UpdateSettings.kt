@@ -79,7 +79,7 @@ private fun UpdateToggle(title: String, detail: String, value: Boolean, onChange
 }
 
 @Composable
-fun LoaderUpdateCard(onUpdated: () -> Unit) {
+fun LoaderUpdateCard(onUpdated: () -> Unit, enabled: Boolean = true, actions: @Composable ColumnScope.() -> Unit = {}) {
     val context = LocalContext.current
     val updates = remember { Updates.get(context) }
     val uri = LocalUriHandler.current
@@ -92,18 +92,19 @@ fun LoaderUpdateCard(onUpdated: () -> Unit) {
             Text(updates.loaderStatus, style = MaterialTheme.typography.bodySmall)
             if (updates.loaderBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(enabled = !updates.loaderBusy, onClick = { updates.checkLoader() }) { Text("检查 GitHub 最新版") }
-                Button(enabled = !updates.loaderBusy && updates.loaderRelease != null, onClick = { confirm = true }) {
+                OutlinedButton(enabled = enabled && !updates.loaderBusy, onClick = { updates.checkLoader() }) { Text("检查 GitHub 最新版") }
+                Button(enabled = enabled && !updates.loaderBusy && updates.loaderRelease != null, onClick = { confirm = true }) {
                     Text(updates.loaderRelease?.let { "更新到 ${it.version}" } ?: "从 GitHub 更新")
                 }
                 TextButton(onClick = { uri.openUri("https://github.com/${GitHubUpdates.LOADER_REPO}/releases/latest") }) { Text("GitHub") }
                 if (updates.loaderBusy) TextButton(onClick = { updates.cancelLoader() }) { Text("取消下载") }
             }
             Text("保留安卓悬浮窗、变速和自由相机；官方包中的同名模组不会覆盖它们。", style = MaterialTheme.typography.bodySmall)
+            actions()
         }
     }
     if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("更新加载器？") }, text = {
         Text("请先完全退出游戏。更新官方 SDK 和模组，保留 Android 引导、游戏注入与现有配置。完成后需重启游戏。")
-    }, confirmButton = { TextButton(onClick = { confirm = false; updates.updateLoader(onUpdated) }) { Text("已退出游戏，开始更新") } },
+    }, confirmButton = { TextButton(onClick = { confirm = false; if (enabled) updates.updateLoader(onUpdated) }) { Text("已退出游戏，开始更新") } },
         dismissButton = { TextButton(onClick = { confirm = false }) { Text("取消") } })
 }

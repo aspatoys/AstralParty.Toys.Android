@@ -1,6 +1,7 @@
 package com.hiynet.aspatoys.installer
 
 import android.content.Context
+import com.hiynet.aspatoys.data.loader.LoaderFs
 import android.content.ContextWrapper
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -46,7 +47,10 @@ class LoaderInstallerRecoveryTest {
         root.deleteRecursively()
     }
 
-    private fun installer(candidates: List<String> = listOf(remotePath)): LoaderInstaller =
+    private fun installer(
+        candidates: List<String> = listOf(remotePath),
+        loaderFs: LoaderFs = FakeLoaderFs(),
+    ): LoaderInstaller =
         LoaderInstaller(
             context = FakeContext(root),
             bundleIo = io,
@@ -54,6 +58,7 @@ class LoaderInstallerRecoveryTest {
             candidatePaths = { candidates },
             serviceAvailable = { true },
             permissionGranted = { true },
+            loaderFs = loaderFs,
         )
 
     private fun sha(bytes: ByteArray) = LoaderBundleTransaction.sha256(bytes)
@@ -175,6 +180,87 @@ class LoaderInstallerRecoveryTest {
         assertFalse(status.shizukuAlive)
         assertFalse(candidatesAsked)
         assertNotNull(status.note)
+    }
+
+    @Test
+    fun disablingRestoresOnlyTheEntryPointAndDeletesNoPayload() {
+        val fs = FakeLoaderFs().apply {
+            files["${LoaderInstaller.LOADER_ROOT}/sdk/CesiumLoader.SDK.dll"] = byteArrayOf(1, 2, 3)
+            files["${LoaderInstaller.LOADER_ROOT}/mods/FontMod/FontMod.dll"] = byteArrayOf(4, 5)
+            files["${LoaderInstaller.LOADER_ROOT}/configs/loader.json"] = """{"theme":"dark"}""".toByteArray()
+        }
+        val before = fs.files.mapValues { it.value.copyOf() }
+        io.files[remotePath] = patchedBytes
+        io.hashes[remotePath] = LoaderInstaller.PATCHED_SHA256
+
+        installer(loaderFs = fs).setEnabled(false) { }
+
+        assertEquals("disable only writes the original bundle back", LoaderInstaller.ORIGINAL_SHA256, io.hashes[remotePath])
+        assertEquals("the game bundle is restored exactly once", 1, io.publishCount)
+        assertEquals("no loader file may be deleted by disable", 0, fs.deletes)
+        assertEquals(before.keys, fs.files.keys)
+        before.forEach { (path, bytes) -> assertTrue("$path must stay byte-identical", bytes.contentEquals(fs.files[path])) }
+    }
+
+    @Test
+    fun enablingAnAlreadyInjectedBundleNeverPublishesTheBundledSdkOverTheOnlineOne() {
+        val fs = FakeLoaderFs()
+        val onlineSdk = byteArrayOf(9, 9, 9, 9)
+        io.files["${LoaderInstaller.LOADER_ROOT}/sdk/CesiumLoader.SDK.dll"] = onlineSdk
+        io.files[remotePath] = patchedBytes
+        io.hashes[remotePath] = LoaderInstaller.PATCHED_SHA256
+
+        installer(loaderFs = fs).setEnabled(true) { }
+
+        assertEquals("re-enabling must not rewrite the game bundle", 0, io.publishCount)
+        assertEquals(LoaderInstaller.PATCHED_SHA256, io.hashes[remotePath])
+        assertTrue(
+            "the online SDK must survive re-enable",
+            onlineSdk.contentEquals(io.files["${LoaderInstaller.LOADER_ROOT}/sdk/CesiumLoader.SDK.dll"]),
+        )
+        assertEquals(0, fs.deletes)
+    }
+
+    @Test
+    fun enablingWithoutPayloadIsRefusedBeforeTouchingTheBundle() {
+        io.files[remotePath] = originalBytes
+        io.hashes[remotePath] = LoaderInstaller.ORIGINAL_SHA256
+
+        val failure = runCatching { installer().setEnabled(true) { } }.exceptionOrNull()
+
+        assertNotNull(failure)
+        assertEquals("请先安装内置加载器", failure?.message)
+        assertEquals(0, io.publishCount)
+    }
+
+    private class FakeLoaderFs : LoaderFs {
+        val files = linkedMapOf<String, ByteArray>()
+        val directories = linkedSetOf<String>()
+        var deletes = 0
+
+        private fun gone(path: String) {
+            files.keys.removeAll { it == path || it.startsWith("$path/") }
+            directories.removeAll { it == path || it.startsWith("$path/") }
+        }
+
+        override fun isAvailable() = true
+        override fun exists(path: String) = path in files || path in directories
+        override fun readText(path: String) = files[path]?.toString(Charsets.UTF_8)
+        override fun writeText(path: String, text: String) { files[path] = text.toByteArray() }
+        override fun readBytes(path: String) = files[path]
+        override fun fileSize(path: String) = files[path]?.size?.toLong() ?: 0L
+        override fun listDirectories(path: String) = directories.filter { it.startsWith("$path/") }
+            .map { it.removePrefix("$path/").substringBefore('/') }.distinct()
+        override fun listFiles(path: String) = files.keys.filter { it.startsWith("$path/") }
+            .map { it.removePrefix("$path/") }.filter { !it.contains('/') }
+        override fun makeDirectories(path: String) { directories += path }
+        override fun move(from: String, to: String) {
+            val bytes = files.remove(from) ?: error("move 源不存在：$from")
+            files[to] = bytes
+        }
+        override fun copyIn(localFile: File, remotePath: String) { files[remotePath] = localFile.readBytes() }
+        override fun delete(path: String) { deletes++; gone(path) }
+        override val lastError: String? = null
     }
 
     private fun projectRoot(): File {

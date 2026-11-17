@@ -69,7 +69,17 @@ class ManagedLoaderUpdate(private val fs: LoaderFs) {
         }
     }
 
-    fun install(root: String, pkg: Package, progress: (String) -> Unit = {}) {
+    /** Mods left untouched because the same DLL exists in both mods/ and disabled_mods/. */
+    data class InstallResult(val skippedLocalMods: List<String>)
+
+    private fun hasDll(root: String, dir: String, id: String): Boolean =
+        fs.exists("$root/$dir/$id.dll") || fs.exists("$root/$dir/$id/$id.dll")
+
+    /** A mod living in both layouts cannot be updated without choosing a side, so it is left to the user. */
+    private fun conflictingMods(root: String, ids: Collection<String>): List<String> =
+        ids.filter { hasDll(root, "mods", it) && hasDll(root, "disabled_mods", it) }
+
+    fun install(root: String, pkg: Package, progress: (String) -> Unit = {}): InstallResult {
         require(pkg.files.keys.all { relative ->
             require(safePath(relative) == relative) { "部署路径必须使用标准分隔符。" }
             val parts = relative.split('/')
@@ -84,21 +94,22 @@ class ManagedLoaderUpdate(private val fs: LoaderFs) {
         val steps = mutableListOf<Step>()
         var rollbackOk = true
         val local = File.createTempFile("loader-index-", ".json")
+        // Keep both copies and every local file of a duplicated mod exactly as the user left them.
+        val skipped = conflictingMods(root, pkg.mods)
         try {
             val planned = linkedMapOf<String, File>()
             for ((relative, file) in pkg.files) {
                 var target = relative
                 if (relative.startsWith("mods/")) {
                     val id = relative.split('/')[1]
-                    val disabled = fs.exists("$root/disabled_mods/$id/$id.dll") || fs.exists("$root/disabled_mods/$id.dll")
-                    val active = fs.exists("$root/mods/$id/$id.dll") || fs.exists("$root/mods/$id.dll")
-                    check(!disabled || !active) { "$id 在启用和停用目录中同时存在，请先整理。" }
-                    if (disabled) target = "disabled_mods/" + relative.removePrefix("mods/")
+                    if (id in skipped) continue
+                    if (hasDll(root, "disabled_mods", id)) target = "disabled_mods/" + relative.removePrefix("mods/")
                 }
                 planned[target] = file
             }
             // Move legacy flat files out of the loader scan together with the transaction.
-            val legacy = pkg.mods.flatMap { id -> listOf("mods/$id.dll", "mods/$id.json", "disabled_mods/$id.dll", "disabled_mods/$id.json") }
+            val legacy = pkg.mods.filterNot { it in skipped }
+                .flatMap { id -> listOf("mods/$id.dll", "mods/$id.json", "disabled_mods/$id.dll", "disabled_mods/$id.json") }
             val oldIndex = if (fs.exists("$root/installed.json")) fs.readText("$root/installed.json")?.let(::parseJsonObjectOrNull) ?: error("安装记录无法解析，已保留原文件。") else JsonObject(emptyMap())
             val index = oldIndex.toMutableMap()
             index["sdkVersion"] = JsonPrimitive(pkg.version)
@@ -139,5 +150,6 @@ class ManagedLoaderUpdate(private val fs: LoaderFs) {
             local.delete()
             if (rollbackOk) runCatching { fs.delete(transaction) }
         }
+        return InstallResult(skipped)
     }
 }

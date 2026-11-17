@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import com.hiynet.aspatoys.data.loader.BuiltinOverlay
 import com.hiynet.aspatoys.data.settings.AppSettings
 import com.hiynet.aspatoys.data.loader.ShizukuLoaderFs
+import com.hiynet.aspatoys.data.loader.LoaderFs
 import com.hiynet.cesiumloader.core.unity.TextAssetPatch
 import com.hiynet.cesiumloader.core.unity.UnityFs
 import com.hiynet.cesiumloader.core.unity.UnityFsWriter
@@ -28,6 +29,7 @@ class LoaderInstaller(
     private val candidatePaths: () -> List<String> = { discoverBundlePaths() },
     private val serviceAvailable: () -> Boolean = { ShizukuShell.isServiceAlive() },
     private val permissionGranted: () -> Boolean = { ShizukuShell.hasPermission() },
+    private val loaderFs: LoaderFs = ShizukuLoaderFs(),
 ) {
 
     companion object {
@@ -160,6 +162,45 @@ class LoaderInstaller(
     fun restore(log: (String) -> Unit): Status {
         require(permissionGranted()) { "先给 Shizuku / Root 授权" }
         transaction.restore(resolveBundle(), log)
+        return status()
+    }
+
+    /** Keep all payload/configuration files while switching only the verified game entry point. */
+    fun setEnabled(enabled: Boolean, log: (String) -> Unit): Status {
+        require(permissionGranted()) { "先给 Shizuku / Root 授权" }
+        LoaderOwnership.default.reset()
+        val path = resolveBundle()
+        if (enabled) {
+            check(hasPayload()) { "请先安装内置加载器" }
+            // Enabling must not deploy the bundled SDK over an online update.
+            LoaderBundleTransaction(workDir, bundleIo, { originalPayload }, ::patchBundle, {},
+                ORIGINAL_SHA256, PATCHED_SHA256).install(path, log)
+        } else {
+            transaction.restore(path, log)
+        }
+        log(if (enabled) "已启用加载器；请重新启动游戏" else "已禁用加载器；模组、配置和预设全部保留")
+        return status()
+    }
+
+    /** Remove payload and backups only after the game bundle is restored and verified. */
+    fun uninstall(log: (String) -> Unit): Status {
+        require(permissionGranted()) { "先给 Shizuku / Root 授权" }
+        LoaderOwnership.default.reset()
+        val path = resolveBundle()
+        LoaderRemoval.remove(loaderFs, LOADER_ROOT,
+            restoreOriginal = {
+                transaction.restore(path, log)
+                check(bundleIo.hash(path) == ORIGINAL_SHA256) { "原包校验失败，未删除加载器文件" }
+            },
+            cleanupLocal = {
+                check(workDir.deleteRecursively()) { "游戏加载器已删除，但安装缓存清理失败" }
+                val updateCache = File(context.cacheDir, "updates")
+                check(File(updateCache, "loader.zip").let { !it.exists() || it.delete() }) { "加载器下载包清理失败" }
+                updateCache.listFiles()?.filter { it.name.startsWith("loader-stage-") }?.forEach {
+                    check(it.deleteRecursively()) { "加载器临时文件清理失败" }
+                }
+            })
+        log("加载器、模组、配置、预设和安装备份已删除，游戏原包已恢复")
         return status()
     }
 
