@@ -21,17 +21,17 @@ namespace OverlayOptionsTests
         // ─── OverlayOptions.Clamp ────────────────────────────────────────────
         static void TestClampNaN()
         {
-            float r = OverlayOptions.Clamp(float.NaN, .25f, 1f, .94f);
-            AssertEq(.94f, r, 1e-6f, "Clamp NaN→fallback");
+            float r = OverlayOptions.Clamp(float.NaN, .25f, 1f, .5f);
+            AssertEq(.5f, r, 1e-6f, "Clamp NaN→fallback");
         }
         static void TestClampInfinity()
         {
-            AssertEq(.94f, OverlayOptions.Clamp(float.PositiveInfinity, .25f, 1f, .94f), 1e-6f, "Clamp +Inf→fallback");
-            AssertEq(.94f, OverlayOptions.Clamp(float.NegativeInfinity, .25f, 1f, .94f), 1e-6f, "Clamp -Inf→fallback");
+            AssertEq(.5f, OverlayOptions.Clamp(float.PositiveInfinity, .25f, 1f, .5f), 1e-6f, "Clamp +Inf→fallback");
+            AssertEq(.5f, OverlayOptions.Clamp(float.NegativeInfinity, .25f, 1f, .5f), 1e-6f, "Clamp -Inf→fallback");
         }
         static void TestClampBelow()
         {
-            AssertEq(.25f, OverlayOptions.Clamp(.1f, .25f, 1f, .94f), 1e-6f, "Clamp below→low");
+            AssertEq(.25f, OverlayOptions.Clamp(.1f, .25f, 1f, .5f), 1e-6f, "Clamp below→low");
         }
         static void TestClampAbove()
         {
@@ -39,7 +39,7 @@ namespace OverlayOptionsTests
         }
         static void TestClampInRange()
         {
-            AssertEq(.8f, OverlayOptions.Clamp(.8f, .25f, 1f, .94f), 1e-6f, "Clamp in-range passthrough");
+            AssertEq(.8f, OverlayOptions.Clamp(.8f, .25f, 1f, .5f), 1e-6f, "Clamp in-range passthrough");
         }
 
         // ─── OverlayOptions.Encode / Parse round-trip ────────────────────────
@@ -96,7 +96,7 @@ namespace OverlayOptionsTests
         static void TestDedup()
         {
             // Encode two groups both containing HideHudMod (case variation in second)
-            string raw = "version=1\nopacity=0.94\nwidth=1\nheight=1\n";
+            string raw = "version=1\nopacity=0.5\nwidth=1\nheight=1\n";
             // group A: HideHudMod  group B: hidehudmod (lowercase dup)
             string b64A = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("A"));
             string b64B = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("B"));
@@ -137,12 +137,12 @@ namespace OverlayOptionsTests
             Assert(threw, "oversized input must throw FormatException");
         }
 
-        // ─── Opacity NaN in wire → fallback .94 ──────────────────────────────
+        // ─── Opacity NaN in wire → fallback .5 ──────────────────────────────
         static void TestOpacityNaNInWire()
         {
             string raw = "version=1\nopacity=NaN\nwidth=1\nheight=1\n";
             var parsed = OverlayOptions.Parse(raw);
-            AssertEq(.94f, parsed.Opacity, 1e-5f, "NaN opacity fallback");
+            AssertEq(.5f, parsed.Opacity, 1e-5f, "NaN opacity fallback");
         }
 
         // ─── Width/Height boundary values ────────────────────────────────────
@@ -158,7 +158,7 @@ namespace OverlayOptionsTests
         static void TestBlankGroupName()
         {
             string b64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("   "));
-            string raw = "version=1\nopacity=0.94\nwidth=1\nheight=1\ngroup=" + b64 + "|HideHudMod\n";
+            string raw = "version=1\nopacity=0.5\nwidth=1\nheight=1\ngroup=" + b64 + "|HideHudMod\n";
             var parsed = OverlayOptions.Parse(raw);
             AssertEq("分组", parsed.Groups[0].Name, "blank name → 分组");
         }
@@ -176,7 +176,7 @@ namespace OverlayOptionsTests
         static void TestDefaults()
         {
             var d = OverlayOptions.Defaults();
-            AssertEq(.94f, d.Opacity, 1e-5f, "default opacity");
+            AssertEq(.5f, d.Opacity, 1e-5f, "default opacity");
             AssertEq(1f,   d.Width,   1e-5f, "default width");
             AssertEq(1f,   d.Height,  1e-5f, "default height");
             Assert(d.Groups.Count == 1, "default one group");

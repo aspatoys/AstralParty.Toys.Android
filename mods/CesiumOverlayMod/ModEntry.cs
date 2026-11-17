@@ -23,6 +23,7 @@ namespace CesiumOverlayMod
     public sealed partial class OverlayController : ModBase
     {
         private readonly OverlayPresentation presentation = new OverlayPresentation();
+        private readonly OverlayMotion motion = new OverlayMotion();
         private GComponent root, window, icon, body;
         private NTexture iconTexture;
         private GTextField notice;
@@ -62,6 +63,7 @@ namespace CesiumOverlayMod
                 BuiltinActions.Refresh();
                 if (changed && GRoot.inst != null && root != null && !root.isDisposed) Build();
             }
+            if (!Application.isFocused && opacityDragging) { opacityDragging = false; opacityTouch = -1; contentKey = null; }
             if (!Application.isFocused && (iconDragging || iconPressed)) { iconDragging = iconPressed = false; dock.Wake(now); }
             if (GRoot.inst == null) return;
             if (root == null || root.isDisposed || root.parent != GRoot.inst || width != GRoot.inst.width || height != GRoot.inst.height)
@@ -80,6 +82,7 @@ namespace CesiumOverlayMod
 
         private void Build()
         {
+            opacityDragging = false; opacityTouch = -1;
             iconDragging = iconPressed = false;
             VirtualKeyboard.Instance?.Clear();
             float iconY = icon == null ? GRoot.inst.height * .16f : icon.y;
@@ -121,6 +124,7 @@ namespace CesiumOverlayMod
             {
                 dock.Wake(Time.realtimeSinceStartup);
                 presentation.Toggle(Time.realtimeSinceStartup);
+                motion.SetOpen(presentation.Open, Time.realtimeSinceStartup);
                 contentKey = null;
                 Render();
                 Animate(Time.realtimeSinceStartup);
@@ -175,24 +179,24 @@ namespace CesiumOverlayMod
         private void Animate(float now)
         {
             if (window == null) return;
-            float progress = presentation.Progress(now);
-            float visible = Mathf.Clamp01(progress);
-            float scale = .12f + .88f * progress;
+            float main = motion.Main(now), rail = motion.Rail(now);
+            float mainVisible = Mathf.Clamp01(main), railVisible = Mathf.Clamp01(rail);
+            float visible = Math.Max(mainVisible, railVisible);
+            float opacity = opacityDragging ? previewOpacity : options.Opacity;
             var layout = DockLayout.Measure(width, height, uiScale, options.Width, presentation.FromRight, icon.y);
-            float startX = presentation.FromRight ? width - icon.width : 0;
-            float startY = icon.y;
-            window.SetScale(uiScale * scale, uiScale * scale);
-            window.SetXY(startX + (layout.MainX - startX) * progress, startY + (layout.Y - startY) * progress);
-            window.alpha = options.Opacity * visible;
-            window.visible = presentation.Open || visible > .001f;
-            window.touchable = presentation.Open && visible >= .98f;
+            float towardEdge = presentation.FromRight ? 1 : -1;
+            window.SetScale(uiScale * (.92f + .08f * main), uiScale * (.92f + .08f * main));
+            window.SetXY(layout.MainX + towardEdge * 32 * uiScale * (1 - main), layout.Y + 8 * uiScale * (1 - main));
+            window.alpha = opacity * mainVisible;
+            window.visible = mainVisible > .001f;
+            window.touchable = presentation.Open && mainVisible >= .98f;
             if (sidePanel != null && !sidePanel.isDisposed)
             {
-                sidePanel.SetScale(uiScale * scale, uiScale * scale);
-                sidePanel.SetXY(startX + (layout.RailX - startX) * progress, startY + (layout.Y - startY) * progress);
-                sidePanel.alpha = options.Opacity * visible;
-                sidePanel.visible = window.visible;
-                sidePanel.touchable = window.touchable;
+                sidePanel.SetScale(uiScale, uiScale);
+                sidePanel.SetXY(layout.RailX + towardEdge * (layout.Rail + layout.Gap) * (1 - rail), layout.Y);
+                sidePanel.alpha = opacity * railVisible;
+                sidePanel.visible = railVisible > .001f;
+                sidePanel.touchable = presentation.Open && railVisible >= .98f;
             }
             float resting = iconDragging || presentation.Open ? 0 : dock.RestProgress(now);
             if (!iconDragging && !iconPressed)
@@ -210,7 +214,12 @@ namespace CesiumOverlayMod
         private void Close()
         {
             VirtualKeyboard.Instance?.Clear();
-            if (presentation.Open) presentation.Toggle(Time.realtimeSinceStartup);
+            opacityDragging = false; opacityTouch = -1;
+            if (presentation.Open)
+            {
+                presentation.Toggle(Time.realtimeSinceStartup);
+                motion.SetOpen(false, Time.realtimeSinceStartup);
+            }
             dock.Wake(Time.realtimeSinceStartup);
         }
 
@@ -239,7 +248,7 @@ namespace CesiumOverlayMod
                     if (action.IsToggle) try { key += ":" + action.Get(); } catch { key += ":unavailable"; }
                 }
             }
-            if (key == contentKey) return;
+            if (key == contentKey || opacityDragging) return;
             contentKey = key;
             bool samePage = renderedTab == presentation.Tab && renderedSelection == presentation.Selected;
             float scroll = samePage && body != null && body.scrollPane != null ? body.scrollPane.posY : 0;

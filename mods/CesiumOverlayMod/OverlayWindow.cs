@@ -18,6 +18,7 @@ namespace CesiumOverlayMod
 
         private bool PollOptions()
         {
+            if (opacityDragging) return false;
             try
             {
                 string raw = File.Exists(OptionsPath) ? File.ReadAllText(OptionsPath) : null;
@@ -34,7 +35,7 @@ namespace CesiumOverlayMod
         {
             // Re-read before saving so a concurrent APK edit does not lose its groups or size.
             var latest = File.Exists(OptionsPath) ? OverlayOptions.Parse(File.ReadAllText(OptionsPath)) : options;
-            latest.Opacity = OverlayOptions.Clamp(opacity, .25f, 1, .94f);
+            latest.Opacity = OverlayOptions.Clamp(opacity, .25f, 1, OpacitySlider.Default);
             string raw = latest.Encode();
             Directory.CreateDirectory(Path.GetDirectoryName(OptionsPath));
             string temp = OptionsPath + ".game-tmp";
@@ -79,15 +80,13 @@ namespace CesiumOverlayMod
         {
             float w = body.width;
             Text(body, "悬浮窗设置", 28, 4, 4, w - 8, 44);
-            Text(body, "不透明度  " + Math.Round(options.Opacity * 100) + "%", 24, 4, 64, w - 8, 44);
-            float half = (w - 12) / 2;
-            Button(body, "−10%", "opacity.minus", 0, 124, half, 58,
-                () => Run(() => SaveOpacity(options.Opacity - .1f)));
-            Button(body, "＋10%", "opacity.plus", half + 12, 124, half, 58,
-                () => Run(() => SaveOpacity(options.Opacity + .1f)));
+            var readout = Text(body, "", 24, 4, 64, w - 8, 44);
+            AddOpacitySlider(w, readout);
+            Text(body, "25%", 16, 4, 174, w / 2 - 8, 28, OverlayTheme.Muted);
+            Text(body, "100%", 16, w / 2, 174, w / 2 - 4, 28, OverlayTheme.Muted);
             Button(body, "恢复默认透明度", "opacity.default", 0, 198, w, 58,
-                () => Run(() => SaveOpacity(.94f)));
-            Text(body, "即时保存；主框和侧栏同步变化。分组及统一大小仍可在 APK 中设置。", 18, 4, 278, w - 8, 88, OverlayTheme.Muted);
+                () => Run(() => SaveOpacity(OpacitySlider.Default)));
+            Text(body, "拖动即时预览，松手保存；默认 50%。分组及统一大小仍可在 APK 中设置。", 18, 4, 278, w - 8, 88, OverlayTheme.Muted);
             Text(body, "点击窗外空白处收起。圆形入口闲置 5 秒或点击外部后，自动淡化并贴边半隐藏。", 18, 4, 378, w - 8, 88, OverlayTheme.Muted);
         }
 
