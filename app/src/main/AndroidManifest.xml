@@ -5,6 +5,7 @@
     <!-- 市场目录、封面与模组包下载都走 HTTPS。 -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!--
       安卓版 CesiumLoader 的模组位于 /sdcard/CesiumLoader/mods，
@@ -31,6 +32,13 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.AstralPartyToys">
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_paths" />
+        </provider>
         <!-- Shizuku 的 binder 由这个 provider 在进程启动时接上；缺了它 pingBinder() 永远是 false。 -->
         <provider
             android:name="rikka.shizuku.ShizukuProvider"

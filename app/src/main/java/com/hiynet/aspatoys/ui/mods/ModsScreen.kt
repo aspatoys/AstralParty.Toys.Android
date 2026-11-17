@@ -130,6 +130,7 @@ fun ModsScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 item { ToysPageHeading("模组管理", "管理已装模组，或从本地导入模组包。") }
+                item { com.hiynet.aspatoys.ui.settings.LoaderUpdateCard(onUpdated = { controller.reloadWorkspace() }) }
                 item {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),

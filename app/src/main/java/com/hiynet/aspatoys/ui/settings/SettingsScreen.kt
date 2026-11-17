@@ -86,6 +86,7 @@ enum class SettingsSection(
     MARKET("市场", "模组市场地址与免责声明", R.drawable.ic_nav_market),
     LANGUAGE("语言", "界面与市场展示语言", R.drawable.ic_settings_language),
     STORAGE("目录与存储", "加载器目录与下载存储位置", R.drawable.ic_settings_storage),
+    UPDATES("软件更新", "检查、下载和安装软件更新", R.drawable.ic_settings_info),
     ABOUT("关于", "版本信息、作者与联系方式", R.drawable.ic_settings_info),
 }
 
@@ -260,6 +261,7 @@ private fun getSectionSummary(
         val perm = if (accessGranted) "已授权" else "未授权"
         "${settings.loaderRoot.path} · $perm"
     }
+    SettingsSection.UPDATES -> "自动检查与下载更新"
     SettingsSection.ABOUT -> "v${BuildConfig.VERSION_NAME} · 联系方式与致谢"
 }
 
@@ -586,6 +588,8 @@ private fun SettingsDetailView(
                     Text(notice!!, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 }
             }
+
+            SettingsSection.UPDATES -> { UpdateSettings() }
 
             SettingsSection.ABOUT -> {
                 ToysSection("应用信息") {
