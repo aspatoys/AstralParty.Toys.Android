@@ -11,7 +11,6 @@
 MOD 管理 · 卡牌方案 · 游戏变速 · 与 Windows 版无缝协作
 
 [![Release](https://img.shields.io/github/v/release/higashitaniyume/AstralParty.Toys.Android?include_prereleases&style=flat-square&label=release)](https://github.com/higashitaniyume/AstralParty.Toys.Android/releases)
-[![Release CI](https://img.shields.io/github/actions/workflow/status/higashitaniyume/AstralParty.Toys.Android/release.yml?style=flat-square&label=Release%20CI)](https://github.com/higashitaniyume/AstralParty.Toys.Android/actions/workflows/release.yml)
 [![Platform](https://img.shields.io/badge/platform-Android%2010+-3DDC84?style=flat-square)](#安装)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-555?style=flat-square)](LICENSE)
 
