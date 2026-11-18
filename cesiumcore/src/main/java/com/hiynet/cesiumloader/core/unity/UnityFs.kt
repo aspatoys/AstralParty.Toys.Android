@@ -44,6 +44,9 @@ class UnityFs private constructor(
     val compression: Int get() = flags and 0x3F
 
     fun readNode(node: Node): ByteArray {
+        require(node.offset in 0..payload.size.toLong() && node.size in 0..payload.size - node.offset) {
+            "Unity 节点越界：${node.path}"
+        }
         val start = node.offset.toInt()
         val end = start + node.size.toInt()
         if (start < 0 || end > payload.size) {
@@ -68,6 +71,7 @@ class UnityFs private constructor(
         const val COMPRESSION_LZMA = 1
         const val COMPRESSION_LZ4 = 2
         const val COMPRESSION_LZ4HC = 3
+        const val MAX_CONTENT_BYTES = 64 * 1024 * 1024
 
         fun parse(bytes: ByteArray): UnityFs {
             val reader = BigEndianReader(bytes)
@@ -76,6 +80,7 @@ class UnityFs private constructor(
             if (signature != MAGIC) throw IllegalStateException("不是 UnityFS 容器: $signature")
 
             val version = reader.readUInt()
+            require(version in 6..8) { "不支持的 UnityFS 版本：$version" }
             val versionPlayer = reader.readNullTerminatedString()
             val versionEngine = reader.readNullTerminatedString()
 
@@ -83,6 +88,10 @@ class UnityFs private constructor(
             val compressedInfoSize = reader.readUInt()
             val uncompressedInfoSize = reader.readUInt()
             val flags = reader.readUInt()
+            require(flags and 0x400 == 0) { "暂不支持加密 Unity 缓存" }
+            require(compressedInfoSize in 1..bytes.size && uncompressedInfoSize in 20..(4 * 1024 * 1024)) {
+                "Unity 块表大小无效"
+            }
 
             if (version >= 7) reader.alignTo(16)
 
@@ -100,6 +109,7 @@ class UnityFs private constructor(
             val blocksInfoHash = infoReader.readBytes(16) // uncompressedDataHash
 
             val blockCount = infoReader.readUInt()
+            require(blockCount in 1..65_536) { "Unity 数据块数量无效" }
             val blocks = ArrayList<Block>(blockCount)
             for (i in 0 until blockCount) {
                 val uncompressedSize = infoReader.readUInt()
@@ -109,6 +119,7 @@ class UnityFs private constructor(
             }
 
             val nodeCount = infoReader.readUInt()
+            require(nodeCount in 1..4096) { "Unity 节点数量无效" }
             val nodes = ArrayList<Node>(nodeCount)
             for (i in 0 until nodeCount) {
                 val offset = infoReader.readLong()
@@ -121,17 +132,22 @@ class UnityFs private constructor(
             if (flags and FLAG_BLOCK_INFO_NEED_PADDING_AT_START != 0) reader.alignTo(16)
             val dataStart = reader.position
 
-            var total = 0
-            for (block in blocks) total += block.uncompressedSize
-            val payload = ByteArray(total)
+            val total = blocks.sumOf { it.uncompressedSize.toLong() }
+            require(total in 1..MAX_CONTENT_BYTES.toLong()) { "Unity 解压内容太大" }
+            require(blocks.all { it.uncompressedSize in 1..MAX_CONTENT_BYTES && it.compressedSize in 1..bytes.size }) {
+                "Unity 数据块长度无效"
+            }
+            val payload = ByteArray(total.toInt())
             var written = 0
             for ((index, block) in blocks.withIndex()) {
                 val raw = reader.readBytes(block.compressedSize)
                 val plain = decompress(raw, block.uncompressedSize, block.flags, "block#$index")
+                require(plain.size == block.uncompressedSize) { "Unity 数据块解压长度不符" }
                 System.arraycopy(plain, 0, payload, written, plain.size)
                 written += plain.size
             }
 
+            require(nodes.all { it.offset in 0..total && it.size in 0..total - it.offset }) { "Unity 节点超出容器范围" }
             return UnityFs(version, versionPlayer, versionEngine, flags, blocks, nodes, blocksInfoHash, dataStart, payload)
         }
 

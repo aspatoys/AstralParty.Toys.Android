@@ -13,8 +13,8 @@ android {
     }
 
     // 版本号由 CI 传入（tag 发布时取 tag 名），本地构建用默认值。
-    val appVersionName = (project.findProperty("appVersionName") as String?)?.takeIf { it.isNotBlank() } ?: "1.3.2"
-    val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 10302
+    val appVersionName = (project.findProperty("appVersionName") as String?)?.takeIf { it.isNotBlank() } ?: "1.3.3"
+    val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 10303
 
     defaultConfig {
         applicationId = "com.hiynet.aspatoys"
@@ -123,7 +123,12 @@ val syncLoaderAssets = tasks.register("syncLoaderAssets") {
                     if (!name.startsWith("AstralParty_ModLoader/mods/")) continue
                     if (name.endsWith(".pdb", ignoreCase = true)) continue
 
-                    val target = File(modsDir, name.removePrefix("AstralParty_ModLoader/mods/"))
+                    val relative = name.removePrefix("AstralParty_ModLoader/mods/")
+                    require(relative.split('/').none { it == ".." || it == "." || it.isEmpty() } && '\\' !in relative &&
+                        ':' !in relative) { "内置模组路径无效：$name" }
+                    if (relative.substringBefore('/').lowercase() in
+                        setOf("cesiumoverlaymod", "speedhackmod", "freecameramod", "languageunlockmod")) continue
+                    val target = File(modsDir, relative)
                     target.parentFile.mkdirs()
                     val input = zip.getInputStream(entry)
                     try {
@@ -196,6 +201,10 @@ val syncLoaderAssets = tasks.register("syncLoaderAssets") {
             .joinToString("") { "%02x".format(it) }
         require(recoveryHash == "77da946bf7d331351a93ff16707aab426f534b7577a771f21267478b7bc70c87") {
             "离线恢复原包指纹不符，拒绝打包"
+        }
+        require(listOf("index.html", "worker.mjs", "mono-config.json", "dotnet.native.wasm", "CacheAssemblyPatcher.dll",
+            "Mono.Cecil.dll").all { File(assetsCesium, "patcher/$it").isFile }) {
+            "缺少本地缓存编辑器：运行 python loader/tools/CacheAssemblyPatcher/build-assets.py --output app/src/main/assets/cesium/patcher"
         }
     }
 }
