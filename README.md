@@ -18,7 +18,7 @@ MOD 管理 · 卡牌方案 · 游戏变速 · 与 Windows 版无缝协作
 ![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
 ![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-4285F4?style=flat-square)
 
-[下载最新版](https://github.com/higashitaniyume/AstralParty.Toys.Android/releases/latest) · [更新记录](CHANGELOG.md) · [Windows 版本](https://github.com/higashitaniyume/AstralParty.Toys) · [CesiumLoader](https://github.com/higashitaniyume/CesiumLoader)
+[下载最新版](https://github.com/higashitaniyume/AstralParty.Toys.Android/releases/latest) · [发布说明](docs/release-notes/) · [Windows 版本](https://github.com/higashitaniyume/AstralParty.Toys) · [CesiumLoader](https://github.com/higashitaniyume/CesiumLoader)
 
 </div>
 
@@ -103,12 +103,14 @@ MOD 管理 · 卡牌方案 · 游戏变速 · 与 Windows 版无缝协作
 ```
 
 **目录结构**：
-- `app/` - 主应用模块
-- `shared/` - 共享代码与数据模型
-- `network/` - 网络请求与 API 调用
-- `tests/` - 单元与集成测试
+- `app/` - 主应用模块（UI 和业务逻辑）
+- `cesiumcore/` - CesiumLoader 核心库
+- `loader/` - 加载器实现与模组框架
+- `mods/` - 内置模组源代码
+- `installer/` - APK 构建工具
+- `tools/` - 开发工具与脚本
 
-更多开发信息见 [DEVELOPMENT.md](docs/DEVELOPMENT.md)。
+更多文档见 [docs/](docs/) 目录，包括 [卡牌定制](docs/card-customization.md)、[快捷键映射](docs/win-key-mapping.md)、[发布说明](docs/release-notes/) 等。
 
 ## 故障排除
 
