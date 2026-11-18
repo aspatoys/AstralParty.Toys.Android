@@ -36,9 +36,35 @@ object UnityFsWriter {
         nodePath: String,
         nodeFlags: Int,
         containerVersion: Int = 8,
+    ): ByteArray = writeNodes(versionPlayer, versionEngine, originalHash, containerVersion,
+        listOf(UnityFs.Node(0, payload.size.toLong(), nodeFlags, nodePath) to payload))
+
+    /** Retains all other node payloads and directory entries verbatim. */
+    fun replaceNode(container: UnityFs, index: Int, replacement: ByteArray): ByteArray {
+        require(index in container.nodes.indices)
+        val entries = container.nodes.mapIndexed { position, node ->
+            node to if (position == index) replacement else container.readNode(node)
+        }
+        return writeNodes(container.versionPlayer, container.versionEngine, container.blocksInfoHash, container.version, entries)
+    }
+
+    private fun writeNodes(
+        versionPlayer: String,
+        versionEngine: String,
+        originalHash: ByteArray,
+        containerVersion: Int,
+        entries: List<Pair<UnityFs.Node, ByteArray>>,
     ): ByteArray {
         require(originalHash.size == 16) { "块信息哈希必须是 16 字节，实际 ${originalHash.size}" }
 
+        val total = entries.sumOf { it.second.size.toLong() }
+        require(total in 1..UnityFs.MAX_CONTENT_BYTES.toLong()) { "重建后的缓存内容太大" }
+        val payload = ByteArray(total.toInt())
+        var nodeOffset = 0
+        for ((_, bytes) in entries) {
+            bytes.copyInto(payload, nodeOffset)
+            nodeOffset += bytes.size
+        }
         val blockCount = if (payload.isEmpty()) 0 else (payload.size + BLOCK_SIZE - 1) / BLOCK_SIZE
 
         // ---- 块信息 ----
@@ -52,11 +78,15 @@ object UnityFsWriter {
             info.writeUInt(size)   // compressedSize（不压缩，两者相等）
             info.writeUShort(UnityFs.COMPRESSION_NONE)
         }
-        info.writeUInt(1)          // nodeCount
-        info.writeLong(0)          // node offset
-        info.writeLong(payload.size.toLong())
-        info.writeUInt(nodeFlags)
-        info.writeNullTerminatedString(nodePath)
+        info.writeUInt(entries.size)
+        nodeOffset = 0
+        for ((node, bytes) in entries) {
+            info.writeLong(nodeOffset.toLong())
+            info.writeLong(bytes.size.toLong())
+            info.writeUInt(node.flags)
+            info.writeNullTerminatedString(node.path)
+            nodeOffset += bytes.size
+        }
         val infoBytes = info.toByteArray()
 
         // ---- 容器头 ----
@@ -70,7 +100,7 @@ object UnityFsWriter {
         header.writeUInt(infoBytes.size)       // uncompressedBlocksInfoSize
         header.writeUInt(FLAGS_UNCOMPRESSED)
         var bytes = header.toByteArray()
-        bytes = padTo(bytes, 16)
+        if (containerVersion >= 7) bytes = padTo(bytes, 16)
 
         bytes = concat(bytes, infoBytes)
         bytes = padTo(bytes, 16)

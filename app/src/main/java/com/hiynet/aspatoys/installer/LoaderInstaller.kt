@@ -19,10 +19,8 @@ import java.security.MessageDigest
  *
  * 全部写盘都经 [ShizukuShell]（`shell` 身份）完成，因为目标在游戏的私有目录里。
  *
- * 注入产物的来源：`assets/cesium/AstralParty.Runtime.injected.dll`。往程序集里写 IL 需要
- * Mono.Cecil，手机上不做，所以这一份随包带、并且**锁死游戏版本**：只有原包 SHA-256 等于
- * [ORIGINAL_SHA256] 才执行注入；[PATCHED_SHA256] 是同一版本的已安装产物，只更新载荷。
- * 其它游戏版本必须重新生成适配；还原优先验证本地备份，损坏时使用随包的已校验原包。
+ * 已知旧版使用随包校验过的产物。其它版本在本机编辑当前缓存内的程序集。
+ * 恢复记录按缓存路径和修改前后的 SHA-256 保存。
  */
 class LoaderInstaller(
     private val context: Context,
@@ -32,6 +30,7 @@ class LoaderInstaller(
     private val serviceAvailable: () -> Boolean = { ShizukuShell.isServiceAlive() },
     private val permissionGranted: () -> Boolean = { ShizukuShell.hasPermission() },
     private val loaderFs: LoaderFs = ShizukuLoaderFs(),
+    private val editAssembly: (ByteArray) -> ByteArray = OfflineAssemblyPatcher(context)::patch,
 ) {
 
     companion object {
@@ -56,7 +55,7 @@ class LoaderInstaller(
         const val LOADER_VERSION_ASSET = "cesium/loader.json"
 
         /** 读不到 loader.json 时用的基线版本。 */
-        const val FALLBACK_LOADER_VERSION = "3.8.0"
+        const val FALLBACK_LOADER_VERSION = "3.8.7"
 
         val LOADER_ROOT = "/sdcard/Android/data/$GAME_PACKAGE/files/CesiumLoader"
 
@@ -92,7 +91,7 @@ class LoaderInstaller(
     private val originalPayload by lazy { originalSource() }
     private val transaction by lazy {
         LoaderBundleTransaction(workDir, bundleIo, { originalPayload }, ::patchBundle, ::deployPayload,
-            ORIGINAL_SHA256, PATCHED_SHA256)
+            ORIGINAL_SHA256, PATCHED_SHA256, CurrentCacheEditor(editAssembly)::patch)
     }
 
     // ---------------------------------------------------------------- 状态
@@ -121,7 +120,7 @@ class LoaderInstaller(
             ?: return Status(shizukuAlive = true, shizukuGranted = true,
                 note = resolution.exceptionOrNull()?.message ?: "找不到游戏缓存包：先启动一次游戏")
         val sha = runCatching { bundleIo.hash(path) }.getOrNull()
-        val state = transaction.classify(sha)
+        val state = transaction.classify(sha, path)
 
         return Status(
             shizukuAlive = true,
@@ -130,13 +129,13 @@ class LoaderInstaller(
             bundleSha256 = sha,
             injected = state == LoaderBundleTransaction.State.INSTALLED,
             supportedVersion = state != LoaderBundleTransaction.State.UNKNOWN,
-            hasBackup = transaction.backupAvailable(sha),
+            hasBackup = transaction.backupAvailable(sha, path),
             loaderPayload = runCatching { hasPayload() }.getOrDefault(false),
             note = when {
                 sha == null -> "读不到缓存包指纹"
-                sha == ORIGINAL_SHA256 -> "原版缓存包，可以安装"
-                sha == PATCHED_SHA256 -> "已识别本版本加载器，可重复更新或校验后还原"
-                else -> "未知缓存版本，未判定为已注入；请勿使用旧原包覆盖更新后的游戏"
+                state == LoaderBundleTransaction.State.ORIGINAL -> "原版缓存包，可以安装"
+                state == LoaderBundleTransaction.State.INSTALLED -> "已识别当前缓存的加载器入口，可更新或还原"
+                else -> "未知缓存版本，安装时将在本机检查并编辑当前程序集"
             },
             cacheState = when (state) {
                 LoaderBundleTransaction.State.ORIGINAL -> "原版"
@@ -175,8 +174,7 @@ class LoaderInstaller(
         if (enabled) {
             check(hasPayload()) { "请先安装内置加载器" }
             // Enabling must not deploy the bundled SDK over an online update.
-            LoaderBundleTransaction(workDir, bundleIo, { originalPayload }, ::patchBundle, {},
-                ORIGINAL_SHA256, PATCHED_SHA256).install(path, log)
+            transaction.enable(path, log)
         } else {
             transaction.restore(path, log)
         }
@@ -191,8 +189,13 @@ class LoaderInstaller(
         val path = resolveBundle()
         LoaderRemoval.remove(loaderFs, LOADER_ROOT,
             restoreOriginal = {
-                transaction.restore(path, log)
-                check(bundleIo.hash(path) == ORIGINAL_SHA256) { "原包校验失败，未删除加载器文件" }
+                val restored = transaction.restore(path, log)
+                check(bundleIo.hash(path) == restored) { "原包校验失败，未删除加载器文件" }
+                for (other in validatedBundlePaths().filter { it != path }) {
+                    if (transaction.classify(bundleIo.hash(other), other) == LoaderBundleTransaction.State.INSTALLED) {
+                        transaction.restore(other, log)
+                    }
+                }
             },
             cleanupLocal = {
                 check(workDir.deleteRecursively()) { "游戏加载器已删除，但安装缓存清理失败" }
@@ -356,14 +359,16 @@ class LoaderInstaller(
         return runCatching { bundleIo.read("$LOADER_ROOT/sdk/CesiumLoader.SDK.dll").isNotEmpty() }.getOrDefault(false)
     }
 
-    private fun resolveBundle(): String {
+    private fun resolveBundle(): String = validatedBundlePaths().first()
+
+    private fun validatedBundlePaths(): List<String> {
         val valid = Regex("/sdcard/Android/data/" + Regex.escape(GAME_PACKAGE) +
             "/files/com\\.unity\\.addressables/AssetBundles/" + BUNDLE_KEY + "/[a-f0-9]{32}/__data")
         val paths = candidatePaths().distinct()
         require(paths.isNotEmpty()) { "在设备上找不到游戏缓存包（先启动一次游戏）" }
         require(paths.all { valid.matches(it) }) { "发现异常缓存路径，未修改任何资源" }
         // Paths are ordered by mtime. Never select an older supported cache over a newer unknown one.
-        return paths.first()
+        return paths
     }
 
     private fun sha256(file: File): String = sha256(file.readBytes())
