@@ -64,6 +64,17 @@ namespace CesiumLoader.Android.Bootstrap
         /// <summary>入口：幂等，异常只落盘不外抛（异常逃进游戏链会把整局卡死）。</summary>
         public static void Load()
         {
+            LoadCore(null);
+        }
+
+        /// <summary>Cache installs explicitly pass the game package's own loader directory.</summary>
+        public static void LoadForGame(string root)
+        {
+            LoadCore(root);
+        }
+
+        private static void LoadCore(string root)
+        {
             lock (Gate)
             {
                 if (_entered) return;
@@ -72,19 +83,19 @@ namespace CesiumLoader.Android.Bootstrap
 
             try
             {
-                Run();
+                Run(root ?? ResolveRoot());
             }
             catch (Exception error)
             {
-                string dir = Path.Combine(ResolveRoot(), "logs");
+                string dir = Path.Combine(root ?? ResolveRoot(), "logs");
                 string stamp = _stamp ?? DateTime.Now.ToString("yyyyMMdd-HHmmss");
                 TryAppend(Path.Combine(dir, "bootstrap-error-" + stamp + ".txt"), Describe(error));
             }
         }
 
-        private static void Run()
+        private static void Run(string root)
         {
-            _root = ResolveRoot();
+            _root = root;
             _mods = Path.Combine(_root, ModsFolder);
             _logsDir = Path.Combine(_root, "logs");
             _stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");

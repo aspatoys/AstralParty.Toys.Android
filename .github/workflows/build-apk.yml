@@ -90,6 +90,14 @@ jobs:
       - name: Build the local cache editor
         run: python3 loader/tools/CacheAssemblyPatcher/build-assets.py --output app/src/main/assets/cesium/patcher
 
+      - name: Prepare verified channel compatibility references
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v0.5.0 --repo Aperfish/CesiumLoader-Android-Direct --pattern 'CesiumLoader-Android-ModPack-0.5.0.apk' --dir channel-reference
+          python3 installer/prepare-channel-references.py --apk channel-reference/CesiumLoader-Android-ModPack-0.5.0.apk
+
       - name: Resolve the loader release
         id: loader
         shell: bash

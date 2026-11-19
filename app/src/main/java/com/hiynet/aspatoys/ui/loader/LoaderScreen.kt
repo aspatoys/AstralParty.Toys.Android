@@ -24,10 +24,13 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import com.hiynet.aspatoys.ui.theme.toysPanel
 import androidx.compose.runtime.Composable
@@ -62,7 +65,6 @@ import kotlinx.coroutines.withContext
  */
 @Composable
 fun LoaderScreen(
-    installer: LoaderInstaller,
     mods: ModsController,
     settings: AppSettings,
     onModeChanged: (String) -> Unit,
@@ -72,19 +74,43 @@ fun LoaderScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val updates = remember { Updates.get(context) }
+    var gamePackage by remember { mutableStateOf(settings.gamePackage) }
+    val installer = remember(gamePackage) { LoaderInstaller(context.applicationContext, gamePackage) }
+    var gamePackages by remember { mutableStateOf(emptyList<String>()) }
+    var showGamePackages by remember { mutableStateOf(false) }
+    var forceChannelCompatibility by remember { mutableStateOf(settings.forceChannelCompatibility) }
     var pendingAction by remember { mutableStateOf<String?>(null) }
     val permissionVersion = ShizukuShell.permissionVersion
 
-    var status by remember { mutableStateOf<LoaderInstaller.Status?>(null) }
+    var status by remember(gamePackage) { mutableStateOf<LoaderInstaller.Status?>(null) }
     var busy by remember { mutableStateOf(false) }
     var logs by remember { mutableStateOf<List<String>>(emptyList()) }
     var mode by remember { mutableStateOf(settings.privilegeMode) }
     val operationBusy = busy || updates.loaderBusy
 
+    fun selectGame(next: String) {
+        settings.gamePackage = next
+        gamePackage = next
+        logs = emptyList()
+        onLoaderChanged()
+        mods.refresh()
+        updates.refreshInstalled()
+    }
+
     fun refresh() {
         scope.launch {
-            status = withContext(Dispatchers.IO) {
+            val snapshot = withContext(Dispatchers.IO) {
                 runCatching { installer.status() }.getOrDefault(LoaderInstaller.Status(note = "状态读取失败"))
+            }
+            status = snapshot
+            if (snapshot.shizukuGranted) {
+                gamePackages = withContext(Dispatchers.IO) {
+                    runCatching { LoaderInstaller.installedGamePackages() }.getOrDefault(emptyList())
+                }
+                val only = gamePackages.singleOrNull()
+                if (settings.selectedGamePackage == null && only != null && only != gamePackage && !operationBusy) {
+                    selectGame(only)
+                }
             }
         }
     }
@@ -112,7 +138,7 @@ fun LoaderScreen(
         }
     }
 
-    LaunchedEffect(permissionVersion) { refresh() }
+    LaunchedEffect(permissionVersion, gamePackage) { refresh() }
     LaunchedEffect(Unit) { mods.onEnter() }
 
     Column(
@@ -148,6 +174,32 @@ fun LoaderScreen(
                     }
                 }
                 OutlinedButton(onClick = { refresh() }, enabled = !operationBusy) { Text("刷新") }
+            }
+        }
+
+        ToysSection("游戏资源") {
+            OutlinedButton(
+                onClick = { showGamePackages = true },
+                enabled = !operationBusy && gamePackages.any { it != gamePackage },
+            ) { Text(gamePackage) }
+            DropdownMenu(expanded = showGamePackages, onDismissRequest = { showGamePackages = false }) {
+                gamePackages.forEach { candidate ->
+                    DropdownMenuItem(text = { Text(candidate) }, onClick = {
+                        showGamePackages = false
+                        selectGame(candidate)
+                    })
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text("实验性强制兼容渠道资源", style = MaterialTheme.typography.titleSmall)
+                    Text("允许安装未收录的渠道缓存。必要时使用 3.3.0 基准，可能影响登录或运行。",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                Switch(checked = forceChannelCompatibility, enabled = !operationBusy, onCheckedChange = {
+                    settings.forceChannelCompatibility = it
+                    forceChannelCompatibility = it
+                })
             }
         }
 
@@ -276,7 +328,7 @@ fun LoaderScreen(
                 "禁用加载器" -> "暂停游戏内加载，保留所有模组、配置和预设。请先完全退出游戏；下次启动生效。"
                 "启用加载器" -> "恢复游戏内加载，继续使用现有加载器版本、模组和配置。请先完全退出游戏。"
                 else -> "安装 APK 内置版本；会覆盖 SDK 和内置模组，已有用户配置保留。请先完全退出游戏。"
-            }) },
+            } + "\n\n游戏：$gamePackage") },
             confirmButton = { TextButton(enabled = !operationBusy, onClick = {
                 pendingAction = null
                 run(action) { log -> when (action) {

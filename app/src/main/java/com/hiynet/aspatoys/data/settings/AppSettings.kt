@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Environment
 import com.hiynet.aspatoys.data.market.MarketClient
+import com.hiynet.cesiumloader.core.AndroidPaths
 import java.io.File
 import java.util.Locale
 
@@ -88,25 +89,44 @@ class AppSettings(context: Context) {
             prefs.edit().putString(KeyPrivilegeMode, if (value == PrivilegeRoot) PrivilegeRoot else PrivilegeShizuku).apply()
         }
 
+    val selectedGamePackage: String?
+        get() = prefs.getString(KeyGamePackage, null)?.takeIf(AndroidPaths::isGamePackage)
+
+    var gamePackage: String
+        get() = selectedGamePackage ?: GamePackage
+        set(value) {
+            require(AndroidPaths.isGamePackage(value))
+            prefs.edit().putString(KeyGamePackage, value).apply()
+        }
+
+    var forceChannelCompatibility: Boolean
+        get() = prefs.getBoolean(KeyForceChannelCompatibility, true)
+        set(value) { prefs.edit().putBoolean(KeyForceChannelCompatibility, value).apply() }
+
     /**
-     * 加载器根目录。
+     * 当前游戏渠道的加载器根目录。
      *
      * 旧版本把这里默认成 `/sdcard/CesiumLoader`（桌面时代的布局）；现在的加载器装在游戏私有目录，
      * 所以读到一个「旧默认值」时顺手迁到新默认位置，避免升级后界面还指着不存在的老路径。
      */
     var loaderRootPath: String
         get() {
-            val stored = prefs.getString(KeyLoaderRoot, null) ?: return defaultLoaderRoot().path
+            val target = gamePackage
+            val key = loaderRootKey(target)
+            val stored = prefs.getString(key, null).orEmpty()
+            if (stored.isEmpty()) return defaultLoaderRoot(target).path
             val legacy = stored.endsWith("/$LegacyLoaderFolderName") && !stored.contains("/Android/data/")
             if (!legacy) return stored
 
-            val migrated = defaultLoaderRoot().path
-            prefs.edit().putString(KeyLoaderRoot, migrated).apply()
+            val migrated = defaultLoaderRoot(target).path
+            prefs.edit().putString(key, migrated).apply()
             return migrated
         }
         set(value) {
-            prefs.edit().putString(KeyLoaderRoot, value.trim()).apply()
+            prefs.edit().putString(loaderRootKey(gamePackage), value.trim()).apply()
         }
+
+    private fun loaderRootKey(target: String): String = if (target == GamePackage) KeyLoaderRoot else "$KeyLoaderRoot.$target"
 
     var downloadsPath: String
         get() = prefs.getString(KeyDownloads, null) ?: defaultDownloadsDir().path
@@ -134,8 +154,8 @@ class AppSettings(context: Context) {
      * 之外的第二份副本，加载器也必须落在游戏自己的目录才能被游戏进程读到）。
      * 这里给出默认位置，实际读写要经 Shizuku（见 `data/loader/LoaderFs`）。
      */
-    private fun defaultLoaderRoot(): File =
-        File(Environment.getExternalStorageDirectory(), LoaderFolderName)
+    private fun defaultLoaderRoot(target: String): File =
+        File(Environment.getExternalStorageDirectory(), "Android/data/$target/files/${AndroidPaths.LoaderFolderName}")
 
     /** 下载暂存放在 App 自己的外部目录，不需要额外权限。 */
     private fun defaultDownloadsDir(): File = File(externalBase(), "downloads")
@@ -163,6 +183,8 @@ class AppSettings(context: Context) {
         private const val KeyThemeMode = "ui.theme"
         private const val KeyBackgroundImage = "ui.background"
         private const val KeyPrivilegeMode = "privilege.mode"
+        private const val KeyGamePackage = "game.package"
+        private const val KeyForceChannelCompatibility = "loader.forceChannelCompatibility"
         private const val KeyLoaderRoot = "paths.loaderRoot"
         private const val KeyDownloads = "paths.downloads"
 

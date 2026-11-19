@@ -8,6 +8,7 @@ import com.hiynet.aspatoys.data.settings.AppSettings
 import com.hiynet.aspatoys.data.loader.ShizukuLoaderFs
 import com.hiynet.aspatoys.data.loader.LoaderFs
 import com.hiynet.aspatoys.ui.theme.OverlayPalette
+import com.hiynet.cesiumloader.core.AndroidPaths
 import com.hiynet.cesiumloader.core.unity.TextAssetPatch
 import com.hiynet.cesiumloader.core.unity.UnityFs
 import com.hiynet.cesiumloader.core.unity.UnityFsWriter
@@ -24,13 +25,15 @@ import java.security.MessageDigest
  */
 class LoaderInstaller(
     private val context: Context,
-    private val bundleIo: BundleIo = ShizukuBundleIo(File(context.getExternalFilesDir(null) ?: context.filesDir, "loader-installer/transport")),
+    private val gamePackage: String = GAME_PACKAGE,
+    private val bundleIo: BundleIo = ShizukuBundleIo(File(workspace(context, gamePackage), "transport"), gamePackage),
     private val originalSource: () -> ByteArray = { context.assets.open(ORIGINAL_ASSET).use { it.readBytes() } },
-    private val candidatePaths: () -> List<String> = { discoverBundlePaths() },
+    private val candidatePaths: () -> List<String> = { discoverBundlePaths(gamePackage) },
     private val serviceAvailable: () -> Boolean = { ShizukuShell.isServiceAlive() },
     private val permissionGranted: () -> Boolean = { ShizukuShell.hasPermission() },
     private val loaderFs: LoaderFs = ShizukuLoaderFs(),
-    private val editAssembly: (ByteArray) -> ByteArray = OfflineAssemblyPatcher(context)::patch,
+    private val editAssembly: (ByteArray) -> ByteArray = OfflineAssemblyPatcher(context, gamePackage)::patch,
+    private val checkNativeLoader: () -> Unit = { rejectNativeLoader(gamePackage) },
 ) {
 
     companion object {
@@ -62,11 +65,37 @@ class LoaderInstaller(
         /** 与 [com.hiynet.cesiumloader.core.CesiumLayout] 保持一致：SDK 在 sdk/，引导在 bootstrap/。 */
         val BOOTSTRAP_REMOTE = "$LOADER_ROOT/bootstrap/CesiumLoader.Android.Bootstrap.dll"
 
-        private fun discoverBundlePaths(): List<String> {
-            val pattern = "/sdcard/Android/data/$GAME_PACKAGE/files/com.unity.addressables/AssetBundles/$BUNDLE_KEY/*/__data"
+        private fun workspace(context: Context, gamePackage: String): File {
+            require(AndroidPaths.isGamePackage(gamePackage))
+            val base = File(context.getExternalFilesDir(null) ?: context.filesDir, "loader-installer")
+            return if (gamePackage == GAME_PACKAGE) base else File(base.parentFile, "loader-installer-channels/$gamePackage")
+        }
+
+        fun installedGamePackages(): List<String> = ShizukuShell.exec("pm list packages --user current com.feimo")
+            .lineSequence().map { it.removePrefix("package:").trim() }.filter(AndroidPaths::isGamePackage)
+            .distinct().sorted().toList()
+
+        private fun discoverBundlePaths(gamePackage: String): List<String> {
+            val base = File(AndroidPaths.bundleCacheDir(gamePackage), BUNDLE_KEY).invariantSeparatorsPath
+            val pattern = ShizukuShell.quote(base) + "/*/__data"
             // Unity leaves old version folders behind; prefer the newest cache instead of lexical order.
             return ShizukuShell.exec("ls -t $pattern 2>/dev/null; true")
                 .lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+        }
+
+        private fun rejectNativeLoader(gamePackage: String) {
+            val paths = ShizukuShell.exec("pm path --user current " + ShizukuShell.quote(gamePackage))
+                .lineSequence().filter { it.startsWith("package:") }.map { it.removePrefix("package:").trim() }.toList()
+            require(paths.isNotEmpty()) { "当前用户空间没有安装所选游戏：$gamePackage" }
+            val nativeLibrary = Regex("""(?:^|\s)lib/[^/\s]+/libcesium\.so(?:\s|$)""")
+            for (path in paths) {
+                val zip = runCatching {
+                    java.util.zip.ZipFile(path).use { apk -> apk.entries().asSequence().any { nativeLibrary.containsMatchIn(it.name) } }
+                }.getOrElse {
+                    nativeLibrary.containsMatchIn(ShizukuShell.exec("unzip -l " + ShizukuShell.quote(path)))
+                }
+                require(!zip) { "检测到原生加载器，拒绝叠加安装。请先恢复官方客户端。" }
+            }
         }
     }
 
@@ -85,19 +114,30 @@ class LoaderInstaller(
         val ownershipWarning: String? = null,
     )
 
-    private val workDir: File
-        get() = File(context.getExternalFilesDir(null) ?: context.filesDir, "loader-installer").apply { mkdirs() }
+    private val isChannel = gamePackage != GAME_PACKAGE
+    private val loaderRoot = AndroidPaths.gameLoaderDir(gamePackage).invariantSeparatorsPath
+    private val bootstrapPath = "$loaderRoot/bootstrap/CesiumLoader.Android.Bootstrap.dll"
+    private val owner = if (isChannel) LoaderOwnership(gamePackage) else LoaderOwnership.default
+    private val workDir: File get() = workspace(context, gamePackage).apply { mkdirs() }
 
     private val originalPayload by lazy { originalSource() }
+    private val channelCompatibility by lazy {
+        ChannelRuntimeCompatibility.bundled(context, editAssembly, OfflineAssemblyPatcher(context, gamePackage)::patchReference)
+    }
     private val transaction by lazy {
+        val editor = CurrentCacheEditor { input, log ->
+            val force = AppSettings(context).forceChannelCompatibility
+            if (isChannel || force) channelCompatibility.patch(input, force, log)
+            else editAssembly(input)
+        }
         LoaderBundleTransaction(workDir, bundleIo, { originalPayload }, ::patchBundle, ::deployPayload,
-            ORIGINAL_SHA256, PATCHED_SHA256, CurrentCacheEditor(editAssembly)::patch)
+            ORIGINAL_SHA256, PATCHED_SHA256, editor::patch, useLegacyProfile = !isChannel)
     }
 
     // ---------------------------------------------------------------- 状态
 
     fun status(): Status {
-        LoaderOwnership.default.reset()
+        owner.reset()
         val rootSelected = ShizukuShell.selectedMode() == com.hiynet.aspatoys.data.settings.AppSettings.PrivilegeRoot
         if (!serviceAvailable()) {
             return Status(
@@ -144,7 +184,7 @@ class LoaderInstaller(
             },
             ownershipWarning = runCatching { hasPayload() }.getOrDefault(false).let { ready ->
                 if (!ready) null
-                else LoaderOwnership.default.verify(listOf(path, LOADER_ROOT, "$LOADER_ROOT/logs", "$LOADER_ROOT/configs", BOOTSTRAP_REMOTE, "$LOADER_ROOT/sdk/CesiumLoader.SDK.dll"))
+                else owner.verify(listOf(path, loaderRoot, "$loaderRoot/logs", "$loaderRoot/configs", bootstrapPath, "$loaderRoot/sdk/CesiumLoader.SDK.dll"))
             },
         )
     }
@@ -154,7 +194,8 @@ class LoaderInstaller(
     /** 安装：备份原包 → 注入程序集 → 重封装容器 → 部署载荷 → 写回。返回安装后的状态。 */
     fun install(log: (String) -> Unit): Status {
         require(permissionGranted()) { "先给 Shizuku / Root 授权" }
-        LoaderOwnership.default.reset()
+        owner.reset()
+        if (isChannel) checkNativeLoader()
         transaction.install(resolveBundle(), log)
         return status()
     }
@@ -169,9 +210,10 @@ class LoaderInstaller(
     /** Keep all payload/configuration files while switching only the verified game entry point. */
     fun setEnabled(enabled: Boolean, log: (String) -> Unit): Status {
         require(permissionGranted()) { "先给 Shizuku / Root 授权" }
-        LoaderOwnership.default.reset()
+        owner.reset()
         val path = resolveBundle()
         if (enabled) {
+            if (isChannel) checkNativeLoader()
             check(hasPayload()) { "请先安装内置加载器" }
             // Enabling must not deploy the bundled SDK over an online update.
             transaction.enable(path, log)
@@ -185,9 +227,9 @@ class LoaderInstaller(
     /** Remove payload and backups only after the game bundle is restored and verified. */
     fun uninstall(log: (String) -> Unit): Status {
         require(permissionGranted()) { "先给 Shizuku / Root 授权" }
-        LoaderOwnership.default.reset()
+        owner.reset()
         val path = resolveBundle()
-        LoaderRemoval.remove(loaderFs, LOADER_ROOT,
+        LoaderRemoval.remove(loaderFs, loaderRoot,
             restoreOriginal = {
                 val restored = transaction.restore(path, log)
                 check(bundleIo.hash(path) == restored) { "原包校验失败，未删除加载器文件" }
@@ -204,7 +246,7 @@ class LoaderInstaller(
                 updateCache.listFiles()?.filter { it.name.startsWith("loader-stage-") }?.forEach {
                     check(it.deleteRecursively()) { "加载器临时文件清理失败" }
                 }
-            })
+            }, gamePackage = gamePackage)
         log("加载器、模组、配置、预设和安装备份已删除，游戏原包已恢复")
         return status()
     }
@@ -220,7 +262,7 @@ class LoaderInstaller(
 
     private fun installOverlayAt(root: String, log: (String) -> Unit) {
         val dark = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
-        BuiltinOverlay(context).install(root, AppSettings(context).themeMode, dark, log) {
+        BuiltinOverlay(context, loaderFs).install(root, AppSettings(context).themeMode, dark, log) {
             OverlayPalette.tokens(context)
         }
     }
@@ -253,7 +295,7 @@ class LoaderInstaller(
     private fun deployPayload(log: (String) -> Unit) {
         ShizukuShell.exec(
             "mkdir -p " + listOf("mods", "configs", "logs", "data", "disabled_mods", "skins", "sdk", "bootstrap")
-                .joinToString(" ") { ShizukuShell.quote("$LOADER_ROOT/$it") },
+                .joinToString(" ") { ShizukuShell.quote("$loaderRoot/$it") },
         )
         // Repair old trees before deploying; later writes also verify each new inode.
         adoptOwnership(log)
@@ -267,7 +309,7 @@ class LoaderInstaller(
         }
 
         deployBuiltInMods(log)
-        installOverlayAt(LOADER_ROOT, log)
+        installOverlayAt(loaderRoot, log)
         writeInstalledIndex(log)
         adoptOwnership(log)
     }
@@ -285,10 +327,9 @@ class LoaderInstaller(
      * `临时文件 + mv -f` 写出来的，属主变成了执行者。
      */
     private fun adoptOwnership(log: (String) -> Unit) {
-        val owner = LoaderOwnership.default
         owner.reset()
-        owner.requireDirectories(LOADER_ROOT)
-        owner.requireOwned(LOADER_ROOT, recursive = true)
+        owner.requireDirectories(loaderRoot)
+        owner.requireOwned(loaderRoot, recursive = true)
         log(if (owner.isSupported()) "加载器目录属主已校验（${owner.ids()?.spec}）"
             else "Shizuku 目录访问已校验；文件写入逐项核对 SHA-256，游戏加载结果需重启后确认")
     }
@@ -330,7 +371,7 @@ class LoaderInstaller(
             appendLine("]")
             appendLine("}")
         }
-        ShizukuLoaderFs().writeText("$LOADER_ROOT/installed.json", payload)
+        loaderFs.writeText("$loaderRoot/installed.json", payload)
         log("installed.json 已写入（${modIds.size} 个内置模组）")
     }
     /**
@@ -342,28 +383,27 @@ class LoaderInstaller(
             fs = loaderFs,
             listAssets = { dir -> context.assets.list(dir).orEmpty().toList() },
             readAsset = { asset -> context.assets.open(asset).use { it.readBytes() } },
-        ).deploy(LOADER_ROOT, log = log)
+        ).deploy(loaderRoot, log = log)
     }
 
     private fun pushAsset(asset: String, relative: String) {
         val local = File(workDir, relative)
         local.parentFile?.mkdirs()
         context.assets.open(asset).use { input -> local.outputStream().use { input.copyTo(it) } }
-        val fs = ShizukuLoaderFs()
-        val remote = "$LOADER_ROOT/$relative"
-        fs.makeDirectories(remote.substringBeforeLast('/'))
-        fs.copyIn(local, remote)
+        val remote = "$loaderRoot/$relative"
+        loaderFs.makeDirectories(remote.substringBeforeLast('/'))
+        loaderFs.copyIn(local, remote)
     }
 
     private fun hasPayload(): Boolean {
-        return runCatching { bundleIo.read("$LOADER_ROOT/sdk/CesiumLoader.SDK.dll").isNotEmpty() }.getOrDefault(false)
+        return runCatching { bundleIo.read("$loaderRoot/sdk/CesiumLoader.SDK.dll").isNotEmpty() }.getOrDefault(false)
     }
 
     private fun resolveBundle(): String = validatedBundlePaths().first()
 
     private fun validatedBundlePaths(): List<String> {
-        val valid = Regex("/sdcard/Android/data/" + Regex.escape(GAME_PACKAGE) +
-            "/files/com\\.unity\\.addressables/AssetBundles/" + BUNDLE_KEY + "/[a-f0-9]{32}/__data")
+        val base = File(AndroidPaths.bundleCacheDir(gamePackage), BUNDLE_KEY).invariantSeparatorsPath
+        val valid = Regex(Regex.escape(base) + "/[a-f0-9]{32}/__data")
         val paths = candidatePaths().distinct()
         require(paths.isNotEmpty()) { "在设备上找不到游戏缓存包（先启动一次游戏）" }
         require(paths.all { valid.matches(it) }) { "发现异常缓存路径，未修改任何资源" }

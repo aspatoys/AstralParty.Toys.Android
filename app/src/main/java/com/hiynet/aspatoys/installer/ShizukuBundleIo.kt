@@ -5,7 +5,8 @@ import java.io.File
 /** Both selected privilege modes use stdin; shell never has to read the toolbox's private files. */
 class ShizukuBundleIo(
     journalDir: File,
-    private val owner: LoaderOwnership = LoaderOwnership.default,
+    private val gamePackage: String = LoaderInstaller.GAME_PACKAGE,
+    private val owner: LoaderOwnership = LoaderOwnership(gamePackage),
 ) : BundleIo {
     private val transport = object : CacheTransport {
         override fun read(path: String) = ShizukuShell.execBytes("cat " + q(path))
@@ -54,6 +55,6 @@ class ShizukuBundleIo(
         owner.requireOwned(path)
     }
 
-    override fun stopGame() { ShizukuShell.exec("am force-stop ${LoaderInstaller.GAME_PACKAGE}") }
+    override fun stopGame() { ShizukuShell.exec("am force-stop " + q(gamePackage)) }
     private fun q(path: String) = ShizukuShell.quote(path)
 }
