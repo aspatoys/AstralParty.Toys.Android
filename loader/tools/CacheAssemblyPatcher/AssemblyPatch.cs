@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices.JavaScript;
 using System.Runtime.Versioning;
+using System.Text.RegularExpressions;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
@@ -9,13 +10,18 @@ public static partial class AssemblyPatch
 {
     private const string AssemblyName = "AstralParty.Runtime";
     private const string BootType = "CesiumLoader.Android.Bootstrap.Boot";
-    private const string BootPath = "/sdcard/Android/data/com.feimo.astralparty/files/CesiumLoader/bootstrap/CesiumLoader.Android.Bootstrap.dll";
     private const string HookName = "__CesiumAndroidLoad";
+    private const string DirectBridge = "CesiumLoader.Android.BootstrapBridge";
+    private const string UnsupportedEdit = "CESIUM_UNSUPPORTED_RUNTIME: ";
 
     [JSExport]
     [SupportedOSPlatform("browser")]
-    public static byte[] Patch(byte[] input)
+    public static byte[] Patch(byte[] input, string packageName, bool reference)
     {
+        if (!Regex.IsMatch(packageName, @"\Acom\.feimo\.(?:astralparty|jxpd)(?:\.[A-Za-z0-9_]+)*\z") ||
+            packageName.Contains("jpn", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("不支持的游戏包名。");
+        var loaderRoot = $"/sdcard/Android/data/{packageName}/files/CesiumLoader";
         using var image = new MemoryStream(input, writable: false);
         using var assemblyResolver = new DefaultAssemblyResolver();
         var resolver = new ConstantResolver(assemblyResolver);
@@ -25,21 +31,39 @@ public static partial class AssemblyPatch
             assembly.Name.HasPublicKey || !module.Attributes.HasFlag(ModuleAttributes.ILOnly))
             throw new InvalidDataException("游戏程序集名称、模块布局或签名与当前安装方式不兼容。");
 
-        resolver.Register(module);
-
         var root = module.Types.Single(t => t.Name == "<Module>");
         var initializer = root.Methods.SingleOrDefault(m => m.Name == ".cctor");
+        var bridge = module.GetType(DirectBridge);
+        if (reference)
+        {
+            // The verified v0.5.0 reference calls Tick from LoginSceneController.Awake.
+            // Keep that call and retarget the bridge to the bootstrap bundled in Toys.
+            var tick = bridge?.Methods.Single(m => m.Name == "Tick")
+                ?? throw new InvalidDataException("渠道兼容基准缺少引导入口。");
+            var started = bridge!.Fields.Single(f => f.Name == "started" && f.IsStatic);
+            var awake = module.GetType("Core.Scene.LoginSceneController").Methods
+                .Single(m => m.Name == "Awake" && m.HasBody);
+            if (awake.Body.Instructions[0].Operand is not MethodReference target || target.FullName != tick.FullName)
+                throw new InvalidDataException("渠道兼容基准的登录入口不匹配。");
+            var referenceCorlib = module.AssemblyReferences.Single(r => r.Name == "mscorlib");
+            tick.Body = new MethodBody(tick);
+            EmitHook(module, referenceCorlib, tick, loaderRoot, started);
+            resolver.Register(module);
+            return WriteVerified(assembly, loaderRoot, reference);
+        }
+
         if (root.Methods.Any(m => m.Name == HookName) ||
+            bridge != null || module.Types.Any(t => t.Namespace.StartsWith("ModLoader.Android", StringComparison.Ordinal)) ||
             initializer?.HasBody == true && initializer.Body.Instructions.Any(i => i.Operand is string s && s == BootType))
             throw new InvalidDataException("此缓存已包含加载器入口。请先用对应备份恢复原包，或在游戏中修复资源。");
         if (initializer != null && (!initializer.IsStatic || !initializer.HasBody || initializer.Body.Instructions.Count == 0))
-            throw new InvalidDataException("当前游戏程序集的模块初始化方法无法修改。");
+            throw new InvalidDataException(UnsupportedEdit + "当前游戏程序集的模块初始化方法无法修改。");
 
         var corlib = module.AssemblyReferences.SingleOrDefault(r => r.Name == "mscorlib")
-            ?? throw new InvalidDataException("无法识别游戏程序集的运行时。");
+            ?? throw new InvalidDataException(UnsupportedEdit + "无法识别游戏程序集的运行时。");
         var hook = new MethodDefinition(HookName, MethodAttributes.Private | MethodAttributes.Static, module.TypeSystem.Void);
         root.Methods.Add(hook);
-        EmitHook(module, corlib, hook);
+        EmitHook(module, corlib, hook, loaderRoot);
         if (initializer == null)
         {
             initializer = new MethodDefinition(".cctor", MethodAttributes.Private | MethodAttributes.Static |
@@ -50,16 +74,32 @@ public static partial class AssemblyPatch
         var il = initializer.Body.GetILProcessor();
         il.InsertBefore(initializer.Body.Instructions[0], il.Create(OpCodes.Call, hook));
 
+        try
+        {
+            resolver.Register(module);
+            return WriteVerified(assembly, loaderRoot, reference);
+        }
+        catch (AssemblyResolutionException error)
+        {
+            throw new InvalidDataException(UnsupportedEdit + error.Message, error);
+        }
+    }
+
+    private static byte[] WriteVerified(AssemblyDefinition assembly, string loaderRoot, bool reference)
+    {
         using var output = new MemoryStream();
         assembly.Write(output);
         output.Position = 0;
         using var verified = AssemblyDefinition.ReadAssembly(output);
-        var verifiedRoot = verified.MainModule.Types.Single(t => t.Name == "<Module>");
-        var verifiedHook = verifiedRoot.Methods.Single(m => m.Name == HookName);
-        var first = verifiedRoot.Methods.Single(m => m.Name == ".cctor").Body.Instructions[0];
-        if (verified.Name.Name != AssemblyName || verified.MainModule.Mvid != module.Mvid ||
-            first.OpCode != OpCodes.Call || (first.Operand as MethodReference)?.Name != HookName ||
-            verifiedHook.Body.ExceptionHandlers.Count != 1)
+        var root = verified.MainModule.GetType(reference ? DirectBridge : "<Module>");
+        var hook = root.Methods.Single(m => m.Name == (reference ? "Tick" : HookName));
+        var caller = reference ? verified.MainModule.GetType("Core.Scene.LoginSceneController").Methods
+            .Single(m => m.Name == "Awake" && m.HasBody) : root.Methods.Single(m => m.Name == ".cctor");
+        var first = caller.Body.Instructions[0];
+        if (verified.Name.Name != AssemblyName || verified.MainModule.Mvid != assembly.MainModule.Mvid ||
+            first.OpCode != OpCodes.Call || (first.Operand as MethodReference)?.FullName != hook.FullName ||
+            hook.Body.ExceptionHandlers.Count != 1 ||
+            !hook.Body.Instructions.Any(i => i.Operand is string value && value == loaderRoot))
             throw new InvalidDataException("生成的游戏程序集未通过回读校验。");
         return output.ToArray();
     }
@@ -106,7 +146,8 @@ public static partial class AssemblyPatch
                 ? definition : base.Resolve(type);
     }
 
-    private static void EmitHook(ModuleDefinition module, AssemblyNameReference corlib, MethodDefinition hook)
+    private static void EmitHook(ModuleDefinition module, AssemblyNameReference corlib, MethodDefinition hook,
+        string loaderRoot, FieldDefinition? started = null)
     {
         TypeReference Type(string ns, string name) => new(ns, name, module, corlib);
         MethodReference Method(TypeReference owner, string name, TypeReference result, bool instance,
@@ -129,18 +170,30 @@ public static partial class AssemblyPatch
             types.Object, new ArrayType(types.Object));
 
         var il = hook.Body.GetILProcessor();
-        var start = il.Create(OpCodes.Ldstr, BootPath);
+        var start = il.Create(OpCodes.Ldstr, loaderRoot + "/bootstrap/CesiumLoader.Android.Bootstrap.dll");
         var catchStart = il.Create(OpCodes.Pop);
         var ret = il.Create(OpCodes.Ret);
+        if (started != null)
+        {
+            il.Emit(OpCodes.Ldsfld, started);
+            il.Emit(OpCodes.Brtrue, ret);
+            il.Emit(OpCodes.Ldc_I4_1);
+            il.Emit(OpCodes.Stsfld, started);
+        }
         il.Append(start);
         il.Emit(OpCodes.Call, read);
         il.Emit(OpCodes.Call, load);
         il.Emit(OpCodes.Ldstr, BootType);
         il.Emit(OpCodes.Callvirt, getType);
-        il.Emit(OpCodes.Ldstr, "Load");
+        il.Emit(OpCodes.Ldstr, "LoadForGame");
         il.Emit(OpCodes.Callvirt, getMethod);
         il.Emit(OpCodes.Ldnull);
-        il.Emit(OpCodes.Ldnull);
+        il.Emit(OpCodes.Ldc_I4_1);
+        il.Emit(OpCodes.Newarr, types.Object);
+        il.Emit(OpCodes.Dup);
+        il.Emit(OpCodes.Ldc_I4_0);
+        il.Emit(OpCodes.Ldstr, loaderRoot);
+        il.Emit(OpCodes.Stelem_Ref);
         il.Emit(OpCodes.Callvirt, invoke);
         il.Emit(OpCodes.Pop);
         il.Emit(OpCodes.Leave_S, ret);

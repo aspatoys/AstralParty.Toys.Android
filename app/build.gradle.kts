@@ -13,8 +13,8 @@ android {
     }
 
     // 版本号由 CI 传入（tag 发布时取 tag 名），本地构建用默认值。
-    val appVersionName = (project.findProperty("appVersionName") as String?)?.takeIf { it.isNotBlank() } ?: "1.3.3"
-    val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 10303
+    val appVersionName = (project.findProperty("appVersionName") as String?)?.takeIf { it.isNotBlank() } ?: "1.3.4"
+    val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 10304
 
     defaultConfig {
         applicationId = "com.hiynet.aspatoys"
@@ -205,6 +205,10 @@ val syncLoaderAssets = tasks.register("syncLoaderAssets") {
         require(listOf("index.html", "worker.mjs", "mono-config.json", "dotnet.native.wasm", "CacheAssemblyPatcher.dll",
             "Mono.Cecil.dll").all { File(assetsCesium, "patcher/$it").isFile }) {
             "缺少本地缓存编辑器：运行 python loader/tools/CacheAssemblyPatcher/build-assets.py --output app/src/main/assets/cesium/patcher"
+        }
+        val channel = File(assetsCesium, "channel")
+        require(File(channel, "references.json").isFile && channel.listFiles()?.count { it.extension == "dll" } == 4) {
+            "缺少渠道基准，请先运行 installer/prepare-channel-references.py"
         }
     }
 }

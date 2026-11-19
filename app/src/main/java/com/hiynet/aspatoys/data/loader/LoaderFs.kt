@@ -44,7 +44,7 @@ interface LoaderFs {
 
 /** 经 Shizuku 执行 shell 的实现；所有路径都按单引号字面量转义。 */
 class ShizukuLoaderFs(
-    private val owner: LoaderOwnership = LoaderOwnership.default,
+    private val owner: LoaderOwnership? = null,
     private val exec: (String) -> String = { ShizukuShell.exec(it) },
     private val writeStream: (String, java.io.InputStream) -> Unit = { command, source -> ShizukuShell.writeStream(command, source) },
 ) : LoaderFs {
@@ -73,7 +73,7 @@ class ShizukuLoaderFs(
         runCatching { ShizukuShell.execBytes("cat " + q(path) + " 2>/dev/null; true") }.getOrNull()
 
     override fun move(from: String, to: String) {
-        owner.requireOwned(from, recursive = true)
+        (owner ?: LoaderOwnership.forPath(to)).requireOwned(from, recursive = true)
         exec("mv " + q(from) + " " + q(to))
     }
 
@@ -84,7 +84,7 @@ class ShizukuLoaderFs(
     override fun makeDirectories(path: String) {
         exec("mkdir -p " + q(path))
         // root 建的目录属主是 root，游戏连遍历都不行；建完立刻改回游戏 uid。
-        owner.requireDirectories(path)
+        (owner ?: LoaderOwnership.forPath(path)).requireDirectories(path)
     }
 
     /** 文件字节数；读不到时返回 0（不猜）。 */
@@ -108,6 +108,7 @@ class ShizukuLoaderFs(
      * 仅当挂载层已将文件归属游戏时才允许发布，否则保留旧文件并明确报错。
      */
     private fun writeAtomic(remotePath: String, source: java.io.InputStream) {
+        val targetOwner = owner ?: LoaderOwnership.forPath(remotePath)
         val temp = "$remotePath.cesium-tmp"
         try {
             val digest = java.security.MessageDigest.getInstance("SHA-256")
@@ -118,10 +119,10 @@ class ShizukuLoaderFs(
                 check(actual == expected) { "文件写入校验失败：$path" }
             }
             verifyHash(temp)
-            owner.requireDirectories(remotePath.substringBeforeLast('/'))
-            owner.requireOwned(temp)
+            targetOwner.requireDirectories(remotePath.substringBeforeLast('/'))
+            targetOwner.requireOwned(temp)
             exec("mv -f " + q(temp) + " " + q(remotePath))
-            owner.requireOwned(remotePath)
+            targetOwner.requireOwned(remotePath)
             verifyHash(remotePath)
         } catch (error: Throwable) {
             runCatching { exec("rm -f " + q(temp)) }

@@ -1,5 +1,7 @@
 package com.hiynet.aspatoys.installer
 
+import com.hiynet.cesiumloader.core.AndroidPaths
+
 /**
  * 把加载器文件的属主改回游戏。
  *
@@ -185,5 +187,9 @@ class LoaderOwnership(
     companion object {
         /** 全进程共用诊断实例，不缓存 uid，防止服务重连后身份过期。 */
         val default: LoaderOwnership by lazy { LoaderOwnership() }
+
+        fun forPath(path: String): LoaderOwnership =
+            AndroidPaths.gamePackageForPath(path)?.takeUnless { it == LoaderInstaller.GAME_PACKAGE }
+                ?.let { LoaderOwnership(it) } ?: default
     }
 }

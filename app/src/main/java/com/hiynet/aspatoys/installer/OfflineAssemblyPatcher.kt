@@ -19,25 +19,31 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
 /** Runs the bundled Mono.Cecil editor in a local WebAssembly renderer, without executing game IL. */
-internal class OfflineAssemblyPatcher(private val context: Context) {
-    fun patch(input: ByteArray): ByteArray {
+internal class OfflineAssemblyPatcher(private val context: Context, private val gamePackage: String) {
+    fun patch(input: ByteArray): ByteArray = edit(input, reference = false)
+    fun patchReference(input: ByteArray): ByteArray = edit(input, reference = true)
+
+    private fun edit(input: ByteArray, reference: Boolean): ByteArray {
         check(Looper.myLooper() != Looper.getMainLooper())
         require(input.size in 1..MAX_ASSEMBLY_SIZE) { "游戏程序集大小超出编辑范围" }
-        val job = Job(context, input)
+        val job = Job(context, input, gamePackage, reference)
         job.handler.post { job.start() }
         try {
             return job.result.get(120, TimeUnit.SECONDS)
         } catch (error: java.util.concurrent.TimeoutException) {
             throw IllegalStateException("本地程序集编辑超时。请检查系统 Android System WebView 是否可用。", error)
         } catch (error: java.util.concurrent.ExecutionException) {
-            throw IllegalStateException(error.cause?.message ?: "本地程序集编辑失败", error.cause)
+            val cause = error.cause
+            if (cause is UnsupportedRuntimeEdit) throw cause
+            throw IllegalStateException(cause?.message ?: "本地程序集编辑失败", cause)
         } finally {
             job.result.cancel(false)
             job.handler.post { job.close() }
         }
     }
 
-    private class Job(private val context: Context, private val input: ByteArray) {
+    private class Job(private val context: Context, private val input: ByteArray, gamePackage: String, reference: Boolean) {
+        private val options = JSONObject().put("package", gamePackage).put("reference", reference).toString().toByteArray()
         val result = CompletableFuture<ByteArray>()
         val handler = Handler(Looper.getMainLooper())
         private var web: WebView? = null
@@ -60,8 +66,11 @@ internal class OfflineAssemblyPatcher(private val context: Context) {
                             if (url.scheme != "https" || url.host != HOST || url.port != -1 ||
                                 request.method != "GET" || !ASSET_NAME.matches(name) || name == "." || name == ".."
                             ) return WebResourceResponse("text/plain", "UTF-8", 403, "Forbidden", emptyMap(), null)
-                            val stream = if (name == "runtime-input") ByteArrayInputStream(input)
-                                else runCatching { context.assets.open("cesium/patcher/$name") }.getOrNull()
+                            val stream = when (name) {
+                                "runtime-input" -> ByteArrayInputStream(input)
+                                "runtime-options.json" -> ByteArrayInputStream(options)
+                                else -> runCatching { context.assets.open("cesium/patcher/$name") }.getOrNull()
+                            }
                             if (stream == null)
                                 return WebResourceResponse("text/plain", "UTF-8", 404, "Not Found", emptyMap(), null)
                             val mime = when (name.substringAfterLast('.')) {
@@ -101,8 +110,11 @@ internal class OfflineAssemblyPatcher(private val context: Context) {
                         handler.postDelayed(::poll, 200)
                     } else {
                         val status = JSONObject(value)
-                        if (status.has("error")) fail(status.getString("error"))
-                        else {
+                        if (status.has("error")) {
+                            val message = status.getString("error")
+                            if (status.optBoolean("unsupported")) result.completeExceptionally(UnsupportedRuntimeEdit(message))
+                            else fail(message)
+                        } else {
                             val size = status.getInt("size")
                             require(size in 1..MAX_ASSEMBLY_SIZE) { "编辑后的程序集大小无效" }
                             collect(size, ByteArrayOutputStream(size))

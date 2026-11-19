@@ -24,19 +24,21 @@ class LoaderBundleTransaction(
     val originalSha256: String,
     val patchedSha256: String,
     private val adaptivePatch: ((ByteArray, (String) -> Unit) -> ByteArray)? = null,
+    private val useLegacyProfile: Boolean = true,
 ) {
     enum class State { ORIGINAL, INSTALLED, UNKNOWN }
 
     val backupFile: File get() = File(workDir, "backups/$originalSha256/__data.orig")
     private val legacyBackup: File get() = File(workDir, "__data.orig")
 
-    fun classify(hash: String?, remote: String? = null): State = when (hash?.lowercase()) {
-        originalSha256 -> State.ORIGINAL
-        patchedSha256 -> State.INSTALLED
-        else -> when {
-            remote == null || hash == null -> State.UNKNOWN
-            recordedOriginal(remote, hash) != null -> State.INSTALLED
-            knownOriginal(remote, hash) -> State.ORIGINAL
+    fun classify(hash: String?, remote: String? = null): State {
+        val value = hash?.lowercase()
+        return when {
+            useLegacyProfile && value == originalSha256 -> State.ORIGINAL
+            useLegacyProfile && value == patchedSha256 -> State.INSTALLED
+            remote == null || value == null -> State.UNKNOWN
+            recordedOriginal(remote, value) != null -> State.INSTALLED
+            knownOriginal(remote, value) -> State.ORIGINAL
             else -> State.UNKNOWN
         }
     }
@@ -45,7 +47,7 @@ class LoaderBundleTransaction(
         val hash = remoteHash?.lowercase() ?: return false
         return runCatching {
             when {
-                hash == originalSha256 || hash == patchedSha256 -> recoverySource()
+                useLegacyProfile && (hash == originalSha256 || hash == patchedSha256) -> recoverySource()
                 remote != null -> recoverySource(
                     recordedOriginal(remote, hash) ?: hash.takeIf { knownOriginal(remote, it) } ?: return false
                 )
@@ -70,7 +72,7 @@ class LoaderBundleTransaction(
 
         if (state == State.INSTALLED) {
             // In particular, never save the installed bundle as __data.orig on a repeated install.
-            val expected = if (currentSha == patchedSha256) originalSha256 else
+            val expected = if (useLegacyProfile && currentSha == patchedSha256) originalSha256 else
                 checkNotNull(recordedOriginal(remote, currentSha)) { "缺少对应版本恢复记录" }
             preserveBackup(recoverySource(expected), log, expected)
             io.stopGame()
@@ -81,7 +83,7 @@ class LoaderBundleTransaction(
             return
         }
 
-        val legacy = currentSha == originalSha256
+        val legacy = useLegacyProfile && currentSha == originalSha256
         val patcher = if (legacy) patch else adaptivePatch
         requireNotNull(patcher) {
             "缓存包版本未适配（$currentSha），未修改游戏缓存或原版备份；请勿用旧备份覆盖更新后的游戏"
@@ -132,7 +134,7 @@ class LoaderBundleTransaction(
             State.UNKNOWN -> error("当前缓存为未知版本（$currentSha），未用旧原包覆盖游戏；请在游戏中修复资源")
             State.INSTALLED -> Unit
         }
-        val expected = if (currentSha == patchedSha256) originalSha256 else
+        val expected = if (useLegacyProfile && currentSha == patchedSha256) originalSha256 else
             checkNotNull(recordedOriginal(remote, currentSha)) { "缺少对应版本恢复记录" }
         val original = recoverySource(expected)
         preserveBackup(original, log, expected)
@@ -146,12 +148,13 @@ class LoaderBundleTransaction(
     }
 
     private fun recoverySource(expected: String = originalSha256): ByteArray {
-        val candidates = if (expected == originalSha256) listOf(backupFile, legacyBackup) else listOf(backupFor(expected))
+        val legacy = useLegacyProfile && expected == originalSha256
+        val candidates = if (legacy) listOf(backupFile, legacyBackup) else listOf(backupFor(expected))
         for (file in candidates) {
             val bytes = runCatching { file.takeIf { it.isFile }?.readBytes() }.getOrNull() ?: continue
             if (sha256(bytes) == expected) return bytes
         }
-        require(expected == originalSha256) { "当前热更包的原始备份缺失或指纹不符，未写回游戏缓存" }
+        require(legacy) { "当前热更包的原始备份缺失或指纹不符，未写回游戏缓存" }
         val bundled = runCatching { originalBytes() }.getOrElse {
             throw IllegalStateException("没有经过校验的原包备份，内置恢复资源也不可用；请在游戏中修复资源", it)
         }

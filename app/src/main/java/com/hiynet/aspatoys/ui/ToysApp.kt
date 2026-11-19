@@ -60,7 +60,6 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import com.hiynet.aspatoys.R
 import com.hiynet.aspatoys.data.AppContainer
-import com.hiynet.aspatoys.installer.LoaderInstaller
 import com.hiynet.aspatoys.installer.ShizukuShell
 import com.hiynet.aspatoys.ui.loader.LoaderScreen
 import com.hiynet.aspatoys.ui.market.MarketController
@@ -99,7 +98,6 @@ fun ToysApp() {
     val scope = rememberCoroutineScope()
     val market = remember { MarketController(container, scope) }
     val mods = remember { ModsController(container, scope, appContext) }
-    val installer = remember { LoaderInstaller(appContext) }
     val cards = remember { CardCustomizationController(container, scope, appContext) }
     com.hiynet.aspatoys.ui.settings.UpdateAutomation()
     OverlayAppearanceSync(container.settings)
@@ -139,7 +137,6 @@ fun ToysApp() {
                                     destination = destination,
                                     market = market,
                                     mods = mods,
-                                    installer = installer,
                                 cards = cards,
                                     container = container,
                                     onOpenSettings = { destination = Destination.SETTINGS },
@@ -161,7 +158,6 @@ fun ToysApp() {
                                 destination = destination,
                                 market = market,
                                 mods = mods,
-                                installer = installer,
                                 cards = cards,
                                 container = container,
                                 onOpenSettings = { destination = Destination.SETTINGS },
@@ -179,7 +175,6 @@ private fun DestinationContent(
     destination: Destination,
     market: MarketController,
     mods: ModsController,
-    installer: LoaderInstaller,
     cards: CardCustomizationController,
     container: AppContainer,
     onOpenSettings: () -> Unit,
@@ -210,7 +205,6 @@ private fun DestinationContent(
                 Destination.CUSTOMIZE -> CardCustomizationScreen(cards)
 
                 Destination.LOADER -> LoaderScreen(
-                    installer = installer,
                     mods = mods,
                     settings = container.settings,
                     onModeChanged = { mode ->

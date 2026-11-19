@@ -16,6 +16,8 @@ object AndroidPaths {
 
     /** 已知的游戏包名根：官方、共存版、渠道服都在这两个之下列出。 */
     val GamePackageRoots = listOf("com.feimo.astralparty", "com.feimo.jxpd")
+    private val PackageName = Regex("com\\.feimo\\.(?:astralparty|jxpd)(?:\\.[A-Za-z0-9_]+)*")
+    private val GameFilesPath = Regex("^/(?:sdcard|storage/emulated/0)/Android/data/([^/]+)/files(?:/|$)")
 
     /** 热更 bundle 缓存目录（相对游戏 files 目录）。 */
     const val BundleCachePath = "com.unity.addressables/AssetBundles"
@@ -30,10 +32,14 @@ object AndroidPaths {
     fun bundleCacheDir(packageName: String): File =
         File(gameFilesDir(packageName), BundleCachePath)
 
-    fun isGamePackage(packageName: String?): Boolean {
-        if (packageName.isNullOrBlank()) return false
-        return GamePackageRoots.any { root ->
-            packageName == root || packageName.startsWith("$root.")
-        }
+    fun isGamePackage(packageName: String?): Boolean =
+        packageName != null && PackageName.matches(packageName) && !packageName.contains("jpn", ignoreCase = true)
+
+    fun gamePackageForPath(path: String): String? =
+        GameFilesPath.find(path)?.groupValues?.get(1)?.takeIf(::isGamePackage)
+
+    fun gameLoaderDir(packageName: String): File {
+        require(isGamePackage(packageName)) { "不支持的游戏包名：$packageName" }
+        return File(gameFilesDir(packageName), LoaderFolderName)
     }
 }

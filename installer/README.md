@@ -33,3 +33,16 @@ Gradle 同步载荷时会复核该文件，缺失或指纹不符不能构建可�
 ```powershell
 python loader/tools/CacheAssemblyPatcher/build-assets.py --output app/src/main/assets/cesium/patcher
 ```
+
+## 渠道服资源
+
+加载器页支持切换到当前用户已安装的 `com.feimo.astralparty`、`com.feimo.jxpd` 或其点分隔渠道包名。
+各渠道使用各自的游戏目录、模组设置和安装备份。强制兼容默认开启，先尝试编辑当前程序集。
+若当前程序集可识别但无法写入入口，再按指纹或原始大小选用 Android Direct v0.5.0 的 3.3.0 基准。
+关闭强制兼容后，渠道服只能用已收录的程序集安装。遇到加密、LZMA 或无法解析的缓存时停止写回。
+如果基准替换后出现登录或运行异常，可禁用加载器恢复该渠道原包。
+
+```powershell
+gh release download v0.5.0 --repo Aperfish/CesiumLoader-Android-Direct --pattern CesiumLoader-Android-ModPack-0.5.0.apk --dir channel-reference
+python installer/prepare-channel-references.py --apk channel-reference/CesiumLoader-Android-ModPack-0.5.0.apk
+```
