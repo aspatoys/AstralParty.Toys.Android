@@ -54,21 +54,39 @@ MOD 管理 · 卡牌方案 · 游戏变速 · 与 Windows 版无缝协作
 
 ## 与 Windows 版本的协作
 
-本项目是 [AstralParty.Toys](https://github.com/higashitaniyume/AstralParty.Toys) 的 Android 官方端口，两个版本可无缝协作：
+本项目是 [AstralParty.Toys](https://github.com/higashitaniyume/AstralParty.Toys) 的 Android 官方端口，两个版本功能对比如下：
 
-| 操作 | Windows | Android |
+| 功能模块 | Windows | Android |
 | --- | --- | --- |
+| **MOD 管理** | | |
 | 浏览 MOD 市场 | ✅ | ✅ |
 | 安装与管理 MOD | ✅ | ✅ |
 | 编辑 MOD 配置 | ✅ | ✅ |
+| MOD 方案保存/切换 | ✅ | ✅ |
+| 资源模组（RML）安装 | ✅ | ❌ |
+| **卡牌与皮肤** | | |
 | 设计卡牌方案 | ✅ | ✅ |
 | 导出方案文件 | ✅ | ✅ |
 | 导入方案文件 | ✅ | ✅ |
+| 角色皮肤编辑 | ✅ | ❌ |
+| 动态卡面制作 | ✅ | ❌ |
+| 主页背景替换 | ✅ | ❌ |
+| **游戏管理** | | |
+| 回放库管理 | ✅ | ❌ |
+| 对局复盘分析 | ✅ | ❌ |
+| 游戏多开/档案管理 | ✅ | ❌ |
+| 游戏启动与变速 | ✅ | ✅ |
+| 加载器管理 | ✅ | ✅ |
+| **系统** | | |
+| 多语言支持 | ✅ | ❌ |
+| 深色模式 | ✅ | ✅ |
+| 响应式 UI | ✅ | ✅ |
 
 **推荐工作流**：
-1. 在 Windows 版本上设计卡牌方案，调整满意后导出
-2. 将方案文件通过网盘、Airdrop、蓝牙或数据线传到手机
-3. 在 Android 版本上导入并应用到游戏
+1. 在 Windows 版本上进行回放分析、设计卡牌方案与角色皮肤
+2. 导出卡牌方案配置文件
+3. 将方案文件通过网盘、Airdrop、蓝牙或数据线传到手机
+4. 在 Android 版本上导入并应用到游戏
 
 市场默认连接 `https://forge.hiynet.com`，可在设置中更改为其它部署地址。
 
