@@ -44,6 +44,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,7 +61,10 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import com.hiynet.aspatoys.R
 import com.hiynet.aspatoys.data.AppContainer
+import com.hiynet.aspatoys.installer.LoaderInstaller
 import com.hiynet.aspatoys.installer.ShizukuShell
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.hiynet.aspatoys.ui.loader.LoaderScreen
 import com.hiynet.aspatoys.ui.market.MarketController
 import com.hiynet.aspatoys.ui.market.MarketScreen
@@ -101,6 +105,20 @@ fun ToysApp() {
     val cards = remember { CardCustomizationController(container, scope, appContext) }
     com.hiynet.aspatoys.ui.settings.UpdateAutomation()
     OverlayAppearanceSync(container.settings)
+
+    val permissionVersion = ShizukuShell.permissionVersion
+    LaunchedEffect(permissionVersion) {
+        if (container.settings.selectedGamePackage != null) return@LaunchedEffect
+        val target = withContext(Dispatchers.IO) {
+            if (!ShizukuShell.isServiceAlive() || !ShizukuShell.hasPermission()) return@withContext null
+            val installed = runCatching { LoaderInstaller.installedGamePackages() }.getOrDefault(emptyList())
+            LoaderInstaller.autoSelectPackage(installed, container.settings.gamePackage, container.settings.selectedGamePackage)
+        }
+        if (target != null) {
+            container.settings.gamePackage = target
+            mods.reloadWorkspace()
+        }
+    }
 
     var destination by rememberSaveable { mutableStateOf(Destination.MODS) }
 

@@ -53,6 +53,16 @@ class AppSettings(context: Context) {
         return { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
+    fun observeLoaderRoot(onChanged: (String) -> Unit): () -> Unit {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == null || key == KeyGamePackage || key == KeyLoaderRoot || key.startsWith("$KeyLoaderRoot.")) {
+                onChanged(loaderRootPath)
+            }
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        return { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
     /** 市场地址；永远是规范化后的合法地址。 */
     var marketBaseUrl: String
         get() = MarketClient.normalizeBaseUrl(prefs.getString(KeyMarketBaseUrl, null))

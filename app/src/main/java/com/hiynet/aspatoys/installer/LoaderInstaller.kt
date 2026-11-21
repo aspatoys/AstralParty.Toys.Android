@@ -75,6 +75,18 @@ class LoaderInstaller(
             .lineSequence().map { it.removePrefix("package:").trim() }.filter(AndroidPaths::isGamePackage)
             .distinct().sorted().toList()
 
+        /**
+         * Pick an installed channel package when the user has not explicitly chosen one yet:
+         * - if only one game package is installed, select it;
+         * - if the default package is not installed at all, select the first installed channel package.
+         */
+        fun autoSelectPackage(installed: List<String>, current: String, selected: String?): String? {
+            if (selected != null || installed.isEmpty()) return null
+            val single = installed.singleOrNull()
+            if (single != null) return single.takeIf { it != current }
+            return if (current in installed) null else installed.first()
+        }
+
         private fun discoverBundlePaths(gamePackage: String): List<String> {
             val base = File(AndroidPaths.bundleCacheDir(gamePackage), BUNDLE_KEY).invariantSeparatorsPath
             val pattern = ShizukuShell.quote(base) + "/*/__data"
@@ -87,14 +99,8 @@ class LoaderInstaller(
             val paths = ShizukuShell.exec("pm path --user current " + ShizukuShell.quote(gamePackage))
                 .lineSequence().filter { it.startsWith("package:") }.map { it.removePrefix("package:").trim() }.toList()
             require(paths.isNotEmpty()) { "当前用户空间没有安装所选游戏：$gamePackage" }
-            val nativeLibrary = Regex("""(?:^|\s)lib/[^/\s]+/libcesium\.so(?:\s|$)""")
             for (path in paths) {
-                val zip = runCatching {
-                    java.util.zip.ZipFile(path).use { apk -> apk.entries().asSequence().any { nativeLibrary.containsMatchIn(it.name) } }
-                }.getOrElse {
-                    nativeLibrary.containsMatchIn(ShizukuShell.exec("unzip -l " + ShizukuShell.quote(path)))
-                }
-                require(!zip) { "检测到原生加载器，拒绝叠加安装。请先恢复官方客户端。" }
+                require(!ApkZipScanner.containsNativeLoader(path)) { "检测到原生加载器，拒绝叠加安装。请先恢复官方客户端。" }
             }
         }
     }
@@ -255,8 +261,7 @@ class LoaderInstaller(
 
     /** Update the in-game overlay without rewriting the game's resource bundle. */
     fun installOverlay(log: (String) -> Unit): Status {
-        val settings = AppSettings(context)
-        installOverlayAt(settings.loaderRootPath, log)
+        installOverlayAt(loaderRoot, log)
         return status()
     }
 

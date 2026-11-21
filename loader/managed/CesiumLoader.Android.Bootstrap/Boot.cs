@@ -83,11 +83,12 @@ namespace CesiumLoader.Android.Bootstrap
 
             try
             {
-                Run(root ?? ResolveRoot());
+                string resolved = !string.IsNullOrEmpty(root) && TryPrepare(root) ? root : ResolveRoot();
+                Run(resolved);
             }
             catch (Exception error)
             {
-                string dir = Path.Combine(root ?? ResolveRoot(), "logs");
+                string dir = Path.Combine(_root ?? root ?? ResolveRoot(), "logs");
                 string stamp = _stamp ?? DateTime.Now.ToString("yyyyMMdd-HHmmss");
                 TryAppend(Path.Combine(dir, "bootstrap-error-" + stamp + ".txt"), Describe(error));
             }
@@ -257,13 +258,37 @@ namespace CesiumLoader.Android.Bootstrap
                 if (TryPrepare(trimmed)) return trimmed;
             }
 
+            string persistent = TryPersistentDataRoot();
+            if (!string.IsNullOrEmpty(persistent) && TryPrepare(persistent)) return persistent;
+
             for (int i = 0; i < RootCandidates.Length; i++)
             {
                 if (TryPrepare(RootCandidates[i])) return RootCandidates[i];
             }
 
             // 都不行也返回首选路径，让后续日志把失败原因写清楚。
-            return RootCandidates[0];
+            return !string.IsNullOrEmpty(persistent) ? persistent : RootCandidates[0];
+        }
+
+        private static string TryPersistentDataRoot()
+        {
+            try
+            {
+                Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
+                for (int i = 0; i < assemblies.Length; i++)
+                {
+                    Type app = assemblies[i].GetType("UnityEngine.Application", false);
+                    if (app == null) continue;
+                    PropertyInfo prop = app.GetProperty("persistentDataPath", BindingFlags.Public | BindingFlags.Static);
+                    if (prop == null) continue;
+                    string path = prop.GetValue(null, null) as string;
+                    if (!string.IsNullOrEmpty(path)) return Path.Combine(path.TrimEnd('/'), "CesiumLoader");
+                }
+            }
+            catch
+            {
+            }
+            return null;
         }
 
         /// <summary>
@@ -473,6 +498,7 @@ namespace CesiumLoader.Android.Bootstrap
                 string[] candidates =
                 {
                     Path.Combine(_root ?? DefaultRoot, name + ".dll"),
+                    Path.Combine(_root ?? DefaultRoot, SdkFolder, name + ".dll"),
                     Path.Combine(_mods ?? Path.Combine(DefaultRoot, ModsFolder), name + ".dll"),
                     Path.Combine(_mods ?? Path.Combine(DefaultRoot, ModsFolder), name, name + ".dll"),
                 };

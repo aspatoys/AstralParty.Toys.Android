@@ -164,6 +164,8 @@ class ModsController(
      */
     private suspend fun scanNow() {
         val ticket = ++scanTicket
+        loaderRootPath = container.settings.loaderRootPath
+        downloadsPath = container.settings.downloadsDir.path
         allFilesAccess = StorageAccess.hasAllFilesAccess(context)
         val loaderRoot = container.settings.loaderRoot
         loaderRootAccess = withContext(Dispatchers.IO) { StorageAccess.describe(loaderRoot) }
@@ -201,6 +203,8 @@ class ModsController(
         loaderRootPath = settings.loaderRootPath
         downloadsPath = settings.downloadsDir.path
         repo.invalidate()
+        refreshJob?.cancel()
+        refreshJob = null
         refresh()
     }
 

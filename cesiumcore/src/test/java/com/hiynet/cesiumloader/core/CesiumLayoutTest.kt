@@ -62,9 +62,25 @@ class CesiumLayoutTest {
     fun `recognises game packages but not neighbours`() {
         assertTrue(AndroidPaths.isGamePackage("com.feimo.astralparty"))
         assertTrue(AndroidPaths.isGamePackage("com.feimo.astralparty.cesium"))
+        assertTrue(AndroidPaths.isGamePackage("com.feimo.astralparty.bilibili"))
+        assertTrue(AndroidPaths.isGamePackage("com.feimo.astralparty.haoyou"))
+        assertTrue(AndroidPaths.isGamePackage("com.feimo.astralparty.mi"))
+        assertTrue(AndroidPaths.isGamePackage("com.feimo.astralparty.huawei"))
+        assertTrue(AndroidPaths.isGamePackage("com.feimo.astralparty.nearme.gamecenter"))
         assertTrue(AndroidPaths.isGamePackage("com.feimo.jxpd"))
+        assertTrue(AndroidPaths.isGamePackage("com.feimo.jxpd.bilibili"))
+        assertTrue(AndroidPaths.isGamePackage("com.feimo.jxpd.vivo"))
         assertFalse(AndroidPaths.isGamePackage("com.feimo.astralpartyfoo"))
+        assertFalse(AndroidPaths.isGamePackage("com.feimo.astralparty.jpn"))
         assertFalse(AndroidPaths.isGamePackage("com.hiynet.aspatoys"))
         assertFalse(AndroidPaths.isGamePackage(null))
+        assertEquals(
+            "com.feimo.astralparty.bilibili",
+            AndroidPaths.gamePackageForPath("/storage/emulated/0/Android/data/com.feimo.astralparty.bilibili/files/CesiumLoader/mods"),
+        )
+        assertEquals(
+            "com.feimo.jxpd.nearme.gamecenter",
+            AndroidPaths.gamePackageForPath("/sdcard/Android/data/com.feimo.jxpd.nearme.gamecenter/files/CesiumLoader"),
+        )
     }
 }

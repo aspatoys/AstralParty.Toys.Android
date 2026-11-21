@@ -93,11 +93,16 @@ fun LoaderScreen(
         gamePackage = next
         logs = emptyList()
         onLoaderChanged()
-        mods.refresh()
+        mods.reloadWorkspace()
         updates.refreshInstalled()
     }
 
     fun refresh() {
+        val persisted = settings.gamePackage
+        if (persisted != gamePackage) {
+            gamePackage = persisted
+            return
+        }
         scope.launch {
             val snapshot = withContext(Dispatchers.IO) {
                 runCatching { installer.status() }.getOrDefault(LoaderInstaller.Status(note = "状态读取失败"))
@@ -107,9 +112,9 @@ fun LoaderScreen(
                 gamePackages = withContext(Dispatchers.IO) {
                     runCatching { LoaderInstaller.installedGamePackages() }.getOrDefault(emptyList())
                 }
-                val only = gamePackages.singleOrNull()
-                if (settings.selectedGamePackage == null && only != null && only != gamePackage && !operationBusy) {
-                    selectGame(only)
+                val auto = LoaderInstaller.autoSelectPackage(gamePackages, gamePackage, settings.selectedGamePackage)
+                if (auto != null && !operationBusy) {
+                    selectGame(auto)
                 }
             }
         }
