@@ -25,11 +25,20 @@ public static partial class AssemblyPatch
         using var image = new MemoryStream(input, writable: false);
         using var assemblyResolver = new DefaultAssemblyResolver();
         var resolver = new ConstantResolver(assemblyResolver);
-        using var assembly = AssemblyDefinition.ReadAssembly(image, new ReaderParameters { MetadataResolver = resolver });
+        AssemblyDefinition assembly;
+        try
+        {
+            assembly = AssemblyDefinition.ReadAssembly(image, new ReaderParameters { MetadataResolver = resolver });
+        }
+        catch (Exception error) when (!reference)
+        {
+            throw new InvalidDataException(UnsupportedEdit + error.Message, error);
+        }
+        using var ownedAssembly = assembly;
         var module = assembly.MainModule;
         if (assembly.Name.Name != AssemblyName || assembly.Modules.Count != 1 ||
             assembly.Name.HasPublicKey || !module.Attributes.HasFlag(ModuleAttributes.ILOnly))
-            throw new InvalidDataException("游戏程序集名称、模块布局或签名与当前安装方式不兼容。");
+            throw new InvalidDataException((reference ? "" : UnsupportedEdit) + "游戏程序集名称、模块布局或签名与当前安装方式不兼容。");
 
         var root = module.Types.Single(t => t.Name == "<Module>");
         var initializer = root.Methods.SingleOrDefault(m => m.Name == ".cctor");
@@ -79,7 +88,7 @@ public static partial class AssemblyPatch
             resolver.Register(module);
             return WriteVerified(assembly, loaderRoot, reference);
         }
-        catch (AssemblyResolutionException error)
+        catch (Exception error) when (error is AssemblyResolutionException or InvalidDataException or NotSupportedException or BadImageFormatException)
         {
             throw new InvalidDataException(UnsupportedEdit + error.Message, error);
         }
@@ -160,18 +169,45 @@ public static partial class AssemblyPatch
 
         var types = module.TypeSystem;
         var bytes = new ArrayType(types.Byte);
+        var fileType = Type("System.IO", "File");
+        var pathType = Type("System.IO", "Path");
         var reflectionAssembly = Type("System.Reflection", "Assembly");
         var systemType = Type("System", "Type");
-        var read = Method(Type("System.IO", "File"), "ReadAllBytes", bytes, false, types.String);
+        var fileExists = Method(fileType, "Exists", types.Boolean, false, types.String);
+        var read = Method(fileType, "ReadAllBytes", bytes, false, types.String);
+        var combine = Method(pathType, "Combine", types.String, false, types.String, types.String);
+        var isNullOrEmpty = Method(Type("System", "String"), "IsNullOrEmpty", types.Boolean, false, types.String);
         var load = Method(reflectionAssembly, "Load", reflectionAssembly, false, bytes);
         var getType = Method(reflectionAssembly, "GetType", systemType, true, types.String);
         var getMethod = Method(systemType, "GetMethod", Type("System.Reflection", "MethodInfo"), true, types.String);
         var invoke = Method(Type("System.Reflection", "MethodBase"), "Invoke", types.Object, true,
             types.Object, new ArrayType(types.Object));
 
+        var unity = module.AssemblyReferences.FirstOrDefault(r => r.Name == "UnityEngine.CoreModule");
+        MethodReference? persistentDataPath = unity == null ? null :
+            Method(new TypeReference("UnityEngine", "Application", module, unity), "get_persistentDataPath", types.String, false);
+        MethodReference? logError = unity == null ? null :
+            Method(new TypeReference("UnityEngine", "Debug", module, unity), "LogError", types.Void, false, types.Object);
+
+        hook.Body.InitLocals = true;
+        var rootVar = new VariableDefinition(types.String);
+        var bootVar = new VariableDefinition(types.String);
+        hook.Body.Variables.Add(rootVar);
+        hook.Body.Variables.Add(bootVar);
+        VariableDefinition? persistentVar = null;
+        if (persistentDataPath != null)
+        {
+            persistentVar = new VariableDefinition(types.String);
+            hook.Body.Variables.Add(persistentVar);
+        }
+
+        const string bootstrapRelative = "bootstrap/CesiumLoader.Android.Bootstrap.dll";
         var il = hook.Body.GetILProcessor();
-        var start = il.Create(OpCodes.Ldstr, loaderRoot + "/bootstrap/CesiumLoader.Android.Bootstrap.dll");
-        var catchStart = il.Create(OpCodes.Pop);
+        var start = il.Create(OpCodes.Ldstr, loaderRoot);
+        var loadBoot = il.Create(OpCodes.Ldloc, bootVar);
+        var catchStart = logError != null
+            ? il.Create(OpCodes.Call, logError)
+            : il.Create(OpCodes.Pop);
         var ret = il.Create(OpCodes.Ret);
         if (started != null)
         {
@@ -181,6 +217,31 @@ public static partial class AssemblyPatch
             il.Emit(OpCodes.Stsfld, started);
         }
         il.Append(start);
+        il.Emit(OpCodes.Stloc, rootVar);
+        il.Emit(OpCodes.Ldloc, rootVar);
+        il.Emit(OpCodes.Ldstr, bootstrapRelative);
+        il.Emit(OpCodes.Call, combine);
+        il.Emit(OpCodes.Stloc, bootVar);
+        if (persistentDataPath != null && persistentVar != null)
+        {
+            il.Emit(OpCodes.Ldloc, bootVar);
+            il.Emit(OpCodes.Call, fileExists);
+            il.Emit(OpCodes.Brtrue, loadBoot);
+            il.Emit(OpCodes.Call, persistentDataPath);
+            il.Emit(OpCodes.Stloc, persistentVar);
+            il.Emit(OpCodes.Ldloc, persistentVar);
+            il.Emit(OpCodes.Call, isNullOrEmpty);
+            il.Emit(OpCodes.Brtrue, loadBoot);
+            il.Emit(OpCodes.Ldloc, persistentVar);
+            il.Emit(OpCodes.Ldstr, "CesiumLoader");
+            il.Emit(OpCodes.Call, combine);
+            il.Emit(OpCodes.Stloc, rootVar);
+            il.Emit(OpCodes.Ldloc, rootVar);
+            il.Emit(OpCodes.Ldstr, bootstrapRelative);
+            il.Emit(OpCodes.Call, combine);
+            il.Emit(OpCodes.Stloc, bootVar);
+        }
+        il.Append(loadBoot);
         il.Emit(OpCodes.Call, read);
         il.Emit(OpCodes.Call, load);
         il.Emit(OpCodes.Ldstr, BootType);
@@ -192,13 +253,13 @@ public static partial class AssemblyPatch
         il.Emit(OpCodes.Newarr, types.Object);
         il.Emit(OpCodes.Dup);
         il.Emit(OpCodes.Ldc_I4_0);
-        il.Emit(OpCodes.Ldstr, loaderRoot);
+        il.Emit(OpCodes.Ldloc, rootVar);
         il.Emit(OpCodes.Stelem_Ref);
         il.Emit(OpCodes.Callvirt, invoke);
         il.Emit(OpCodes.Pop);
-        il.Emit(OpCodes.Leave_S, ret);
+        il.Emit(OpCodes.Leave, ret);
         il.Append(catchStart);
-        il.Emit(OpCodes.Leave_S, ret);
+        il.Emit(OpCodes.Leave, ret);
         il.Append(ret);
         hook.Body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
         {

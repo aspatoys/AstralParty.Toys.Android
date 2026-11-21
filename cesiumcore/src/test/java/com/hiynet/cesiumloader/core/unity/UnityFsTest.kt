@@ -55,4 +55,36 @@ class UnityFsTest {
         val error = runCatching { UnityFs.parse(byteArrayOf(1, 2, 3, 4)) }.exceptionOrNull()
         assertTrue("应当拒绝非 UnityFS 输入", error is IllegalStateException)
     }
+
+    @Test
+    fun parsesBlocksWithHighFlagBitsSet() {
+        val payload = "channel-bundle-payload".toByteArray(Charsets.UTF_8)
+        val bundle = UnityFsWriter.writeSingleNode(
+            versionPlayer = "5.x.x",
+            versionEngine = "2022.3.62f3",
+            payload = payload,
+            originalHash = ByteArray(16) { it.toByte() },
+            nodePath = "CAB-channel",
+            nodeFlags = 4,
+            containerVersion = 8,
+        )
+        // Locate the first StorageBlock's 2-byte flags inside uncompressed blocksInfo and set kBlockFlagStreamed (0x40).
+        val reader = BigEndianReader(bundle)
+        reader.readNullTerminatedString()
+        reader.readUInt()
+        reader.readNullTerminatedString()
+        reader.readNullTerminatedString()
+        reader.readLong()
+        reader.readUInt()
+        reader.readUInt()
+        reader.readUInt()
+        reader.alignTo(16)
+        val blockFlagsOffset = reader.position + 16 + 4 + 4 + 4
+        bundle[blockFlagsOffset] = 0x00
+        bundle[blockFlagsOffset + 1] = 0x40
+
+        val parsed = UnityFs.parse(bundle)
+        assertEquals(0x40, parsed.blocks.single().flags)
+        assertEquals(String(payload, Charsets.UTF_8), String(parsed.readNode(parsed.nodes.single()), Charsets.UTF_8))
+    }
 }

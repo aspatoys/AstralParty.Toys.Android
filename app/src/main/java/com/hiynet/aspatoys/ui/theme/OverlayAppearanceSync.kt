@@ -6,6 +6,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
@@ -31,7 +32,12 @@ fun OverlayAppearanceSync(settings: AppSettings) {
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
     }
-    val root = settings.loaderRootPath
+    var root by remember(settings) { mutableStateOf(settings.loaderRootPath) }
+    DisposableEffect(settings) {
+        root = settings.loaderRootPath
+        val stop = settings.observeLoaderRoot { root = it }
+        onDispose(stop)
+    }
     val permission = ShizukuShell.permissionVersion
     LaunchedEffect(mode, systemDark, root, permission, resumed) {
         withContext(Dispatchers.IO) {

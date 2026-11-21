@@ -97,9 +97,49 @@ class ChannelRuntimeCompatibilityTest {
     fun channelNamesCannotEscapeTheGameDirectory() {
         assertEquals("/sdcard/Android/data/com.feimo.jxpd.vendor/files/CesiumLoader",
             AndroidPaths.gameLoaderDir("com.feimo.jxpd.vendor").path.replace('\\', '/'))
+        assertEquals("/sdcard/Android/data/com.feimo.astralparty.bilibili/files/CesiumLoader",
+            AndroidPaths.gameLoaderDir("com.feimo.astralparty.bilibili").path.replace('\\', '/'))
+        assertEquals("/sdcard/Android/data/com.feimo.astralparty.nearme.gamecenter/files/CesiumLoader",
+            AndroidPaths.gameLoaderDir("com.feimo.astralparty.nearme.gamecenter").path.replace('\\', '/'))
         assertFalse(AndroidPaths.isGamePackage("com.feimo.astralparty."))
         assertFalse(AndroidPaths.isGamePackage("com.feimo.astralparty../other"))
         assertFalse(AndroidPaths.isGamePackage("com.feimo.astralparty.jpn"))
+    }
+
+    @Test
+    fun autoSelectPackagePrefersInstalledChannelWhenOfficialIsAbsent() {
+        assertEquals(
+            "com.feimo.astralparty.bilibili",
+            LoaderInstaller.autoSelectPackage(
+                installed = listOf("com.feimo.astralparty.bilibili"),
+                current = LoaderInstaller.GAME_PACKAGE,
+                selected = null,
+            ),
+        )
+        assertEquals(
+            "com.feimo.astralparty.bilibili",
+            LoaderInstaller.autoSelectPackage(
+                installed = listOf("com.feimo.astralparty.bilibili", "com.feimo.astralparty.haoyou"),
+                current = LoaderInstaller.GAME_PACKAGE,
+                selected = null,
+            ),
+        )
+        assertEquals(
+            null,
+            LoaderInstaller.autoSelectPackage(
+                installed = listOf(LoaderInstaller.GAME_PACKAGE, "com.feimo.astralparty.bilibili"),
+                current = LoaderInstaller.GAME_PACKAGE,
+                selected = null,
+            ),
+        )
+        assertEquals(
+            null,
+            LoaderInstaller.autoSelectPackage(
+                installed = listOf("com.feimo.astralparty.bilibili"),
+                current = LoaderInstaller.GAME_PACKAGE,
+                selected = LoaderInstaller.GAME_PACKAGE,
+            ),
+        )
     }
 
     private fun policy(edit: (ByteArray) -> ByteArray) = ChannelRuntimeCompatibility(references, { id ->

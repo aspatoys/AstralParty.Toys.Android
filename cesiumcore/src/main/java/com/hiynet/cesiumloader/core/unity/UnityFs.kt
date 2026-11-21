@@ -141,7 +141,7 @@ class UnityFs private constructor(
             var written = 0
             for ((index, block) in blocks.withIndex()) {
                 val raw = reader.readBytes(block.compressedSize)
-                val plain = decompress(raw, block.uncompressedSize, block.flags, "block#$index")
+                val plain = decompress(raw, block.uncompressedSize, block.flags and 0x3F, "block#$index")
                 require(plain.size == block.uncompressedSize) { "Unity 数据块解压长度不符" }
                 System.arraycopy(plain, 0, payload, written, plain.size)
                 written += plain.size
