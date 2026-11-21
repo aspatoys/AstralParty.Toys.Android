@@ -48,12 +48,18 @@
             android:multiprocess="false"
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
+        <!--
+            应用状态（模组配置编辑器、市场搜索与详情、各页草稿）都挂在 Compose 的 remember 上，
+            Activity 一重建就全部回默认：旋转屏幕或切换深色模式会把正在编辑的配置直接关掉。
+            这里自行处理这些配置变化，布局由 Compose 按 LocalConfiguration 重新排。
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
             android:resizeableActivity="true"
             android:screenOrientation="fullUser"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|density|uiMode"
             android:theme="@style/Theme.AstralPartyToys"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>

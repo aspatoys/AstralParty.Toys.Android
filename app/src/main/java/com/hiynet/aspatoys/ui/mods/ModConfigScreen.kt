@@ -33,6 +33,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -360,7 +361,14 @@ private fun ConfigFieldCard(field: ConfigField, onChange: (String) -> Unit) {
                     )
 
                     ConfigKind.NUMBER, ConfigKind.TEXT -> {
-                        var draft by remember(field.key, field.display) { mutableStateOf(field.display) }
+                        // 草稿只跟字段名绑定。模型值会随输入实时变化，拿它当 remember 的 key
+                        // 会让每敲一个字都重建草稿（光标跳到末尾、输入被打断）。
+                        var draft by remember(field.key) { mutableStateOf(field.display) }
+                        // 只有外部改动（重新读取、切换模组）才回灌；自己敲进去的值读回来与草稿一致，
+                        // 不会覆盖正在输入的内容。
+                        LaunchedEffect(field.key, field.display) {
+                            if (field.display != draft) draft = field.display
+                        }
                         OutlinedTextField(
                             value = draft,
                             onValueChange = { typed ->

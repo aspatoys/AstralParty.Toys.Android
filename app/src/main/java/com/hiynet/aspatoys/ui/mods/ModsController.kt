@@ -18,6 +18,7 @@ import com.hiynet.aspatoys.ui.components.Toasts
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -344,8 +345,17 @@ class ModsController(
     var deletingModId by mutableStateOf<String?>(null)
         private set
 
+    /**
+     * 原始文本的防抖校验任务。
+     *
+     * 整份配置（含四语言 `_comments`）每敲一个字解析一次既慢、又会让"不是合法 JSON"的提示
+     * 闪个不停；停手 [CONFIG_PARSE_DEBOUNCE_MS] 之后再解析一次。
+     */
+    private var configTextJob: Job? = null
+
     /** 打开某个模组的配置面板。 */
     fun openConfig(entry: ModEntry) {
+        configTextJob?.cancel()
         val path = repo.configPath(entry.name)
         configEditor = ConfigEditorState(
             entry = entry,
@@ -381,6 +391,7 @@ class ModsController(
     }
 
     fun closeConfig() {
+        configTextJob?.cancel()
         configEditor = null
     }
 
@@ -394,6 +405,7 @@ class ModsController(
                 withContext(Dispatchers.IO) {
                     repo.deleteMod(entry) { line -> logs += line }
                 }
+                configTextJob?.cancel()
                 configEditor = null
                 scanNow()
                 message = "已删除 ${entry.shownName}"
@@ -408,19 +420,39 @@ class ModsController(
     /** 文本编辑模式下的整段文本改动。 */
     fun updateConfigText(text: String) {
         val current = configEditor ?: return
-        val parsed = ModConfigText.parse(text, settings.language())
-        configEditor = current.copy(
-            text = text,
-            fields = parsed?.fields.orEmpty(),
-            uneditable = parsed?.uneditable.orEmpty(),
-            dirty = true,
-            error = if (parsed == null) "现在不是合法 JSON，保存会被拒绝。" else null,
-        )
+        // 先落文本（输入框直接读它），解析与校验停手后再做。
+        configEditor = current.copy(text = text, dirty = true)
+        configTextJob?.cancel()
+        configTextJob = scope.launch {
+            delay(CONFIG_PARSE_DEBOUNCE_MS)
+            val parsed = withContext(Dispatchers.Default) { ModConfigText.parse(text, settings.language()) }
+            val live = configEditor ?: return@launch
+            // 期间又改了或换了模组：这次结果作废。
+            if (live.text != text || live.modId != current.modId) return@launch
+            configEditor = live.copy(
+                // 解析失败时保留上一次可用的字段，别让一个错字符把「表单模式」也锁掉。
+                fields = parsed?.fields ?: live.fields,
+                uneditable = parsed?.uneditable ?: live.uneditable,
+                error = if (parsed == null) "现在不是合法 JSON，保存会被拒绝。" else null,
+            )
+        }
     }
 
     fun setConfigRawMode(raw: Boolean) {
         val current = configEditor ?: return
-        configEditor = current.copy(rawMode = raw)
+        configTextJob?.cancel()
+        if (raw) {
+            configEditor = current.copy(rawMode = true)
+            return
+        }
+        // 回表单前必须按当前文本重新解析，否则表单显示的可能是防抖前那次编辑的旧值。
+        val parsed = ModConfigText.parse(current.text, settings.language())
+        configEditor = current.copy(
+            rawMode = false,
+            fields = parsed?.fields ?: current.fields,
+            uneditable = parsed?.uneditable ?: current.uneditable,
+            error = if (parsed == null) "现在不是合法 JSON，保存会被拒绝。" else null,
+        )
     }
 
     /**
@@ -448,6 +480,8 @@ class ModsController(
     fun saveConfig() {
         val current = configEditor ?: return
         if (current.saving) return
+        // 保存时自己会校验，别让防抖任务稍后再把旧结论盖回来。
+        configTextJob?.cancel()
         if (ModConfigText.parse(current.text, settings.language()) == null) {
             configEditor = current.copy(error = "不是合法 JSON，没保存。")
             return
@@ -522,5 +556,8 @@ class ModsController(
     companion object {
         /** 从文件管理器选包时的复制上限，与模组包本身的上限一致。 */
         const val MAX_PICKED_BYTES = 64L * 1024 * 1024
+
+        /** 原始 JSON 停止输入多久之后才解析校验。 */
+        private const val CONFIG_PARSE_DEBOUNCE_MS = 300L
     }
 }

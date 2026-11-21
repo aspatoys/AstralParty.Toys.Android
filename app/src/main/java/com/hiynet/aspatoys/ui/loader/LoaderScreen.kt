@@ -59,6 +59,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
+ * 日志保留的行数上限。
+ *
+ * 日志是渲染在普通 `Column` 里的，安装一次可能打几百行；不设上限的话每追加一行都要重组
+ * 全部已有行，页面会越用越卡，而且整页长度无限增长。
+ */
+private const val MAX_LOG_LINES = 300
+
+/**
  * 加载器页：加载器目录的状态（原来在模组页顶部的「模组工作区」）+ 装 / 还原。
  *
  * 所有设备操作都经 Shizuku（`shell` 身份）完成，所以第一步是授权，第二步才是安装。
@@ -85,6 +93,11 @@ fun LoaderScreen(
     var status by remember(gamePackage) { mutableStateOf<LoaderInstaller.Status?>(null) }
     var busy by remember { mutableStateOf(false) }
     var logs by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    /** 追加一行日志；只保留最近 [MAX_LOG_LINES] 行。 */
+    fun appendLog(line: String) {
+        logs = (logs + line).takeLast(MAX_LOG_LINES)
+    }
     var mode by remember { mutableStateOf(settings.privilegeMode) }
     val operationBusy = busy || updates.loaderBusy
 
@@ -127,14 +140,14 @@ fun LoaderScreen(
         scope.launch {
             try {
                 val result = withContext(Dispatchers.IO) {
-                    block { line -> logs = logs + line }
+                    block { line -> appendLog(line) }
                 }
                 status = result
-                logs = logs + "—— $action 完成 ——"
+                appendLog("—— $action 完成 ——")
                 // 装/还原都会改动加载器目录，模组页下次进入要重扫。
                 onLoaderChanged()
             } catch (error: Throwable) {
-                logs = logs + ("失败：" + (error.message ?: error.toString()))
+                appendLog("失败：" + (error.message ?: error.toString()))
             } finally {
                 busy = false
                 refresh()

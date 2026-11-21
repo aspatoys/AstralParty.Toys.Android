@@ -105,6 +105,10 @@ fun ModsScreen(
 
     AnimatedContent(
         targetState = configEditor,
+        // 编辑器的全部状态都在 targetState 里（text / fields / dirty…），不指定 contentKey 时
+        // 每敲一个字都会被当成一次页面切换：播放转场、重建内容、丢掉焦点与滚动位置。
+        // 这里只把「切换模组」算作导航，编辑内容的变化原地更新。
+        contentKey = { it?.modId },
         transitionSpec = {
             if (targetState != null) {
                 (slideInHorizontally(tween(ToysMotion.Enter)) { it / 5 } + fadeIn(tween(ToysMotion.Enter)))
