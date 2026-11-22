@@ -107,5 +107,12 @@ class CesiumLayoutTest {
             "com.custom.channel.game",
             AndroidPaths.gamePackageForPath("/storage/emulated/0/Android/data/com.custom.channel.game/files/CesiumLoader"),
         )
+        assertEquals(true, AndroidPaths.isComPackage("com.feimo.astralparty"))
+        assertEquals(true, AndroidPaths.isComPackage("com.jxpd.feimo.m4399"))
+        assertEquals(true, AndroidPaths.isComPackage("com.custom.channel.game"))
+        assertEquals(false, AndroidPaths.isComPackage("com.hiynet.aspatoys"))
+        assertEquals(false, AndroidPaths.isComPackage("org.example.game"))
+        assertEquals(false, AndroidPaths.isComPackage("com."))
+        assertEquals(false, AndroidPaths.isComPackage(null))
     }
 }

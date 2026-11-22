@@ -139,37 +139,6 @@ class ChannelRuntimeCompatibilityTest {
         assertEquals(listOf("com.jxpd.feimo.m4399"), found)
     }
 
-    @Test
-    fun installedThirdPartyPackagesPinsRecognizedGamesFirstAndExcludesToolbox() {
-        val pmOutput = """
-            package:com.hiynet.aspatoys
-            package:com.custom.channel.game
-            package:com.jxpd.feimo.m4399
-            package:com.android.chrome
-            package:com.feimo.astralparty.bilibili
-        """.trimIndent()
-        val found = LoaderInstaller.installedThirdPartyPackages { cmd ->
-            if (cmd == "pm list packages -3 --user current") pmOutput else error("unexpected cmd: $cmd")
-        }
-        assertEquals(
-            listOf(
-                "com.feimo.astralparty.bilibili",
-                "com.jxpd.feimo.m4399",
-                "com.android.chrome",
-                "com.custom.channel.game",
-            ),
-            found,
-        )
-
-        val fallback = LoaderInstaller.installedThirdPartyPackages { cmd ->
-            when (cmd) {
-                "pm list packages -3 --user current" -> error("unsupported")
-                "pm list packages -3" -> "package:com.custom.channel.game\npackage:com.hiynet.aspatoys\n"
-                else -> error("unexpected cmd: $cmd")
-            }
-        }
-        assertEquals(listOf("com.custom.channel.game"), fallback)
-    }
 
     @Test
     fun autoSelectPackagePrefersInstalledChannelWhenOfficialIsAbsent() {

@@ -54,6 +54,9 @@ object AndroidPaths {
             ValidPackageName.matches(packageName) &&
             !packageName.equals(SelfPackage, ignoreCase = true)
 
+    fun isComPackage(packageName: String?): Boolean =
+        isValidPackageName(packageName) && packageName!!.startsWith("com.")
+
     fun gamePackageForPath(path: String): String? =
         GameFilesPath.find(path)?.groupValues?.get(1)?.takeIf(::isValidPackageName)
 

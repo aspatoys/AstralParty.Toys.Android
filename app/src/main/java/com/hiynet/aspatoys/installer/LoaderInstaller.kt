@@ -78,28 +78,12 @@ class LoaderInstaller(
             return parseInstalledGamePackages(output)
         }
 
-        fun installedThirdPartyPackages(exec: (String) -> String = { ShizukuShell.exec(it) }): List<String> {
-            val output = runCatching { exec("pm list packages -3 --user current") }
-                .getOrNull()?.takeIf { it.isNotBlank() }
-                ?: runCatching { exec("pm list packages -3") }.getOrNull()?.takeIf { it.isNotBlank() }
-                ?: exec("pm list packages")
-            return parseSelectablePackages(output)
-        }
-
         internal fun parseInstalledGamePackages(pmOutput: String): List<String> =
             pmOutput.lineSequence()
                 .map { it.removePrefix("package:").trim() }
                 .filter(AndroidPaths::isGamePackage)
                 .distinct()
                 .sorted()
-                .toList()
-
-        internal fun parseSelectablePackages(pmOutput: String): List<String> =
-            pmOutput.lineSequence()
-                .map { it.removePrefix("package:").trim() }
-                .filter(AndroidPaths::isValidPackageName)
-                .distinct()
-                .sortedWith(compareByDescending<String> { AndroidPaths.isGamePackage(it) }.thenBy { it })
                 .toList()
 
         /**

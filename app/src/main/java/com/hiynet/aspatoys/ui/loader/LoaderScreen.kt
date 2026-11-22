@@ -56,7 +56,10 @@ import com.hiynet.aspatoys.ui.settings.LoaderUpdateCard
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import android.net.Uri
+import com.hiynet.aspatoys.data.loader.ShizukuLoaderFs
 import com.hiynet.aspatoys.data.settings.AppSettings
+import com.hiynet.aspatoys.installer.FolderPackageResolver
 import com.hiynet.aspatoys.installer.LoaderInstaller
 import com.hiynet.aspatoys.installer.RootShell
 import com.hiynet.aspatoys.installer.ShizukuShell
@@ -96,6 +99,7 @@ fun LoaderScreen(
     var gamePackages by remember { mutableStateOf(emptyList<String>()) }
     var showGamePackages by remember { mutableStateOf(false) }
     var showPackagePicker by remember { mutableStateOf(false) }
+    var folderPickerError by remember { mutableStateOf<String?>(null) }
     var forceChannelCompatibility by remember { mutableStateOf(settings.forceChannelCompatibility) }
     var pendingAction by remember { mutableStateOf<String?>(null) }
     val permissionVersion = ShizukuShell.permissionVersion
@@ -114,6 +118,7 @@ fun LoaderScreen(
     fun selectGame(next: String) {
         settings.gamePackage = next
         gamePackage = next
+        folderPickerError = null
         logs = emptyList()
         onLoaderChanged()
         mods.reloadWorkspace()
@@ -149,6 +154,18 @@ fun LoaderScreen(
                 refresh()
                 onLoaderChanged()
                 mods.reloadWorkspace()
+            }
+        }
+    }
+
+    val pickPackageFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+        if (uri != null) {
+            val selected = FolderPackageResolver.fromTreeUri(uri)
+            showPackagePicker = false
+            if (selected != null) {
+                selectGame(selected)
+            } else {
+                folderPickerError = "所选文件夹不是 com. 开头的包名目录"
             }
         }
     }
@@ -225,9 +242,19 @@ fun LoaderScreen(
                     enabled = !operationBusy && gamePackages.any { it != gamePackage },
                 ) { Text(gamePackage) }
                 OutlinedButton(
-                    onClick = { showPackagePicker = true },
+                    onClick = {
+                        folderPickerError = null
+                        showPackagePicker = true
+                    },
                     enabled = !operationBusy,
                 ) { Text("选择包体") }
+            }
+            folderPickerError?.let { error ->
+                Text(
+                    error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
             DropdownMenu(expanded = showGamePackages, onDismissRequest = { showGamePackages = false }) {
                 gamePackages.forEach { candidate ->
@@ -393,13 +420,15 @@ fun LoaderScreen(
             dismissButton = { TextButton(onClick = { pendingAction = null }) { Text("取消") } })
     }
     if (showPackagePicker) {
-        PackagePickerDialog(
+        FolderPackagePickerDialog(
             currentPackage = gamePackage,
-            canScanPackages = status?.shizukuGranted == true,
+            canBrowseFolders = status?.shizukuGranted == true,
+            recognizedPackages = gamePackages.toSet(),
             onSelect = { selected ->
                 showPackagePicker = false
                 selectGame(selected)
             },
+            onOpenSystemFolder = { pickPackageFolder.launch(null) },
             onDismiss = { showPackagePicker = false },
         )
     }
@@ -407,116 +436,178 @@ fun LoaderScreen(
 }
 
 @Composable
-private fun PackagePickerDialog(
+private fun FolderPackagePickerDialog(
     currentPackage: String,
-    canScanPackages: Boolean,
+    canBrowseFolders: Boolean,
+    recognizedPackages: Set<String>,
     onSelect: (String) -> Unit,
+    onOpenSystemFolder: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var currentPath by remember { mutableStateOf(FolderPackageResolver.DefaultDataRoot) }
     var query by remember { mutableStateOf("") }
-    var loading by remember { mutableStateOf(canScanPackages) }
-    var packages by remember { mutableStateOf<List<String>>(emptyList()) }
+    var loading by remember { mutableStateOf(canBrowseFolders) }
+    var folders by remember { mutableStateOf<List<String>>(emptyList()) }
     var loadError by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(canScanPackages) {
-        if (!canScanPackages) {
+    LaunchedEffect(currentPath, canBrowseFolders, recognizedPackages) {
+        if (!canBrowseFolders) {
+            folders = emptyList()
+            loadError = null
             loading = false
             return@LaunchedEffect
         }
         loading = true
         loadError = null
-        val result = withContext(Dispatchers.IO) {
-            runCatching { LoaderInstaller.installedThirdPartyPackages() }
+        val (listed, err) = withContext(Dispatchers.IO) {
+            val fs = ShizukuLoaderFs()
+            val dirs = runCatching { fs.listDirectories(currentPath) }.getOrElse { error ->
+                return@withContext emptyList<String>() to (error.message ?: "读取文件夹失败")
+            }
+            val names = dirs.map { it.trimEnd('/').substringAfterLast('/') }
+            FolderPackageResolver.sortFolders(names, recognizedPackages) to fs.lastError
         }
-        packages = result.getOrDefault(emptyList())
-        loadError = result.exceptionOrNull()?.message
+        folders = listed
+        loadError = err
         loading = false
     }
 
     val trimmed = query.trim()
-    val filtered = remember(packages, trimmed) {
-        if (trimmed.isEmpty()) packages
-        else packages.filter { it.contains(trimmed, ignoreCase = true) }
+    val filtered = remember(folders, trimmed) {
+        if (trimmed.isEmpty()) folders
+        else folders.filter { it.contains(trimmed, ignoreCase = true) }
     }
+    val parent = remember(currentPath) { FolderPackageResolver.parentPath(currentPath) }
+    val pathPackage = remember(currentPath) { FolderPackageResolver.fromPath(currentPath) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("选择游戏包体") },
+        title = { Text("选择包体文件夹") },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    label = { Text("搜索已安装应用或输入包名") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                Text(
+                    currentPath,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            parent?.let {
+                                currentPath = it
+                                query = ""
+                            }
+                        },
+                        enabled = canBrowseFolders && parent != null && !loading,
+                    ) { Text("上一级") }
+                    OutlinedButton(
+                        onClick = onOpenSystemFolder,
+                    ) { Text("系统文件夹") }
+                }
+                if (canBrowseFolders) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        label = { Text("筛选当前目录文件夹") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 if (loading) {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                        Text("正在读取已安装应用…", style = MaterialTheme.typography.bodySmall)
+                        Text("正在读取文件夹…", style = MaterialTheme.typography.bodySmall)
                     }
-                } else if (loadError != null) {
+                } else if (!canBrowseFolders) {
                     Text(
-                        "读取应用列表失败：$loadError",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                } else if (!canScanPackages) {
-                    Text(
-                        "未连接 Shizuku / Root，可直接手动输入包名使用。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else if (filtered.isEmpty()) {
-                    Text(
-                        "没有匹配的已安装应用，可在上方直接输入完整包名。",
+                        "未连接 Shizuku / Root，无法直接浏览 /sdcard/Android/data，请先授权或点击上方「系统文件夹」选择 com. 开头的包名目录。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 260.dp)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        filtered.forEach { pkg ->
-                            val selected = pkg == currentPackage
-                            val recognized = AndroidPaths.isGamePackage(pkg)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(
-                                        if (selected) MaterialTheme.colorScheme.secondaryContainer
-                                        else MaterialTheme.colorScheme.surfaceContainerLow,
-                                    )
-                                    .clickable { onSelect(pkg) }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    pkg,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                    color = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.weight(1f).padding(end = 8.dp),
-                                )
-                                if (recognized) {
+                    val errorText = loadError
+                    if (errorText != null && filtered.isEmpty()) {
+                        Text(
+                            "读取目录失败：$errorText",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    } else if (filtered.isEmpty()) {
+                        Text(
+                            if (trimmed.isEmpty()) "当前目录下没有子文件夹，可点「上一级」或「系统文件夹」。"
+                            else "没有匹配 \"$trimmed\" 的文件夹。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        if (errorText != null) {
+                            Text(
+                                errorText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 260.dp)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            filtered.forEach { folder ->
+                                val selectable = FolderPackageResolver.isSelectableComFolder(folder)
+                                val recognized = folder in recognizedPackages || AndroidPaths.isGamePackage(folder)
+                                val selected = selectable && folder == currentPackage
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(
+                                            if (selected) MaterialTheme.colorScheme.secondaryContainer
+                                            else MaterialTheme.colorScheme.surfaceContainerLow,
+                                        )
+                                        .clickable {
+                                            if (selectable) {
+                                                onSelect(folder)
+                                            } else {
+                                                currentPath = if (currentPath == "/") "/$folder" else "${currentPath.trimEnd('/')}/$folder"
+                                                query = ""
+                                            }
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
                                     Text(
-                                        "已识别",
+                                        folder,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = if (selected || selectable) FontWeight.SemiBold else FontWeight.Normal,
+                                        color = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f).padding(end = 8.dp),
+                                    )
+                                    Text(
+                                        when {
+                                            recognized -> "已识别 · 选择"
+                                            selectable -> "选择"
+                                            else -> "打开"
+                                        },
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary,
+                                        color = when {
+                                            recognized || selectable -> MaterialTheme.colorScheme.primary
+                                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
                                     )
                                 }
                             }
@@ -527,9 +618,9 @@ private fun PackagePickerDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = AndroidPaths.isValidPackageName(trimmed),
-                onClick = { onSelect(trimmed) },
-            ) { Text("使用输入包名") }
+                enabled = pathPackage != null,
+                onClick = { pathPackage?.let(onSelect) },
+            ) { Text("选择当前文件夹") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("取消") }
