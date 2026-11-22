@@ -19,7 +19,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
@@ -54,6 +53,7 @@ import com.hiynet.aspatoys.data.mods.ConfigField
 import com.hiynet.aspatoys.data.mods.ConfigKind
 import com.hiynet.aspatoys.data.mods.ModConfigText
 import com.hiynet.aspatoys.data.mods.ModEntry
+import com.hiynet.aspatoys.ui.components.ConfirmDialog
 import com.hiynet.aspatoys.ui.components.MessageBanner
 import com.hiynet.aspatoys.ui.components.Pill
 import com.hiynet.aspatoys.ui.components.SkeletonDetail
@@ -287,27 +287,20 @@ fun ModConfigScreen(
     }
 
     if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("删除模组？") },
-            text = {
-                Text(
-                    "将删除「${state.title}」的模组文件，但保留 configs/${state.modId}.json。\n" +
-                        "这个操作不能撤销。",
-                )
+        ConfirmDialog(
+            title = "删除模组「${state.title}」？",
+            lines = listOf(
+                "删除这个模组的文件。",
+                "保留 configs/${state.modId}.json，以后重新安装会沿用这份配置。",
+                "删除后不能撤销。只是暂时不想用的话，关掉模组开关就行。",
+            ),
+            confirmLabel = "删除",
+            danger = true,
+            onConfirm = {
+                showDeleteConfirm = false
+                controller.deleteMod(state.entry)
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDeleteConfirm = false
-                        controller.deleteMod(state.entry)
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                ) { Text("删除") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") }
-            },
+            onDismiss = { showDeleteConfirm = false },
         )
     }
 }

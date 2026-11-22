@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hiynet.aspatoys.data.cards.CardPackageStore
+import com.hiynet.aspatoys.ui.components.ConfirmDialog
 import com.hiynet.aspatoys.ui.theme.ToysPageHeading
 import com.hiynet.aspatoys.ui.theme.toysPanel
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +48,7 @@ fun CardCustomizationScreen(controller: CardCustomizationController, modifier: M
     var replacementProfile by rememberSaveable { mutableStateOf<String?>(null) }
     var addCard by rememberSaveable { mutableStateOf(false) }
     var restore by rememberSaveable { mutableStateOf<String?>(null) }
+    var restoreDefault by rememberSaveable { mutableStateOf(false) }
     var binding by rememberSaveable { mutableStateOf("") }
     val importPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { if (it != null) controller.importZip(it) }
     val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
@@ -96,8 +98,9 @@ fun CardCustomizationScreen(controller: CardCustomizationController, modifier: M
                     Text(problem, Modifier.fillMaxWidth().toysPanel().padding(14.dp), style = MaterialTheme.typography.bodySmall)
                 } }
                 item {
+                    // 会改游戏里的卡面，先确认。
                     DefaultProfile(selected = controller.selected == CardPackageStore.GameDefault, enabled = !controller.busy && controller.connectionProblem == null) {
-                        controller.apply(CardPackageStore.GameDefault)
+                        restoreDefault = true
                     }
                 }
                 items(controller.profiles.chunked(2), key = { pair -> pair.first().id }) { pair ->
@@ -143,14 +146,45 @@ fun CardCustomizationScreen(controller: CardCustomizationController, modifier: M
     if (create) AlertDialog(onDismissRequest = { create = false }, title = { Text("新建卡牌方案") }, text = {
         OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("方案名称") }, singleLine = true, modifier = Modifier.testTag("cards.profile.name"))
     }, confirmButton = { TextButton(onClick = { create = false; controller.create(name) }, enabled = name.isNotBlank()) { Text("创建") } }, dismissButton = { TextButton(onClick = { create = false }) { Text("取消") } })
-    delete?.let { id -> AlertDialog(onDismissRequest = { delete = null }, title = { Text("删除卡牌方案？") },
-        text = { Text("将删除此方案在应用与游戏中的副本。当前选中的方案需先切换到游戏默认。") },
-        confirmButton = { TextButton(onClick = { delete = null; controller.remove(id) }) { Text("删除") } },
-        dismissButton = { TextButton(onClick = { delete = null }) { Text("取消") } }) }
-    if (restore != null && editing != null) AlertDialog(onDismissRequest = { restore = null }, title = { Text("恢复此卡牌原图？") },
-        text = { Text("移除此方案对这张卡的替换，不影响其他卡。应用到游戏后生效。") },
-        confirmButton = { TextButton(onClick = { val key = restore!!; restore = null; controller.restoreCard(editing, key) }) { Text("恢复原图") } },
-        dismissButton = { TextButton(onClick = { restore = null }) { Text("取消") } })
+    delete?.let { id ->
+        val inUse = controller.selected == id
+        ConfirmDialog(
+            title = "删除卡牌方案「${controller.profileName(id)}」？",
+            lines = listOf(
+                "删除这个方案在应用和游戏里的副本。",
+                "其他方案和游戏原图不受影响。",
+                "删除后找不回来。想留一份的话，先用「更多 → 导出 ZIP」备份。",
+            ),
+            footnote = if (inUse) "这个方案正在使用，要先「恢复默认」切回游戏默认卡面，才能删除。" else null,
+            confirmLabel = "删除",
+            danger = true,
+            onConfirm = { delete = null; controller.remove(id) },
+            onDismiss = { delete = null },
+        )
+    }
+    if (restore != null && editing != null) ConfirmDialog(
+        title = "恢复这张卡的原图？",
+        lines = listOf(
+            "移除这个方案对这张卡的替换图片。",
+            "其他卡不受影响；应用到游戏后，这张卡显示游戏原图。",
+            "替换用的图片会从方案里删掉，想再用要重新选择。",
+        ),
+        confirmLabel = "恢复原图",
+        danger = true,
+        onConfirm = { val key = restore!!; restore = null; controller.restoreCard(editing, key) },
+        onDismiss = { restore = null },
+    )
+    if (restoreDefault) ConfirmDialog(
+        title = "恢复游戏默认卡面？",
+        lines = listOf(
+            "停用外部卡面，游戏改用内置原图。",
+            "你的卡牌方案都保留，随时可以重新应用。",
+            "完成后完全重启游戏生效。",
+        ),
+        confirmLabel = "恢复默认",
+        onConfirm = { restoreDefault = false; controller.apply(CardPackageStore.GameDefault) },
+        onDismiss = { restoreDefault = false },
+    )
     if (addCard && editing != null) AlertDialog(onDismissRequest = { addCard = false }, title = { Text("添加卡面") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("填写 Win 版使用的卡牌名称、数字 ID 或素材名，例如 UT_HandCard_10001。", style = MaterialTheme.typography.bodySmall)

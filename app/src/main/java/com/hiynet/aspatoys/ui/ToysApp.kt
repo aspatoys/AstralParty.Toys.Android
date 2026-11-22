@@ -76,6 +76,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.hiynet.aspatoys.ui.settings.SettingsScreen
 import com.hiynet.aspatoys.ui.components.OperationHost
+import com.hiynet.aspatoys.ui.components.ToysSnackbarHost
 import com.hiynet.aspatoys.ui.theme.ToysBackdrop
 import com.hiynet.aspatoys.ui.theme.ToysMotion
 import com.hiynet.aspatoys.ui.theme.toysPressFeedback
@@ -162,6 +163,7 @@ fun ToysApp() {
                                     modifier = if (destination == Destination.MARKET) Modifier.fillMaxSize()
                                         else Modifier.widthIn(max = 980.dp).fillMaxHeight(),
                                 )
+                                ToysSnackbarHost(Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
                             }
                         }
                     } else {
@@ -172,6 +174,7 @@ fun ToysApp() {
                             bottomBar = {
                                 ToysDock(destination = destination, onSelect = { destination = it })
                             },
+                            snackbarHost = { ToysSnackbarHost() },
                         ) { innerPadding ->
                             DestinationContent(
                                 destination = destination,

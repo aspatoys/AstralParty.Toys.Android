@@ -13,6 +13,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.hiynet.aspatoys.BuildConfig
 import com.hiynet.aspatoys.data.updates.GitHubUpdates
 import com.hiynet.aspatoys.data.updates.Updates
+import com.hiynet.aspatoys.ui.components.ConfirmDialog
 import com.hiynet.aspatoys.ui.components.Operations
 
 @Composable
@@ -45,7 +46,14 @@ fun UpdateSettings() {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(enabled = !updates.appBusy, onClick = { updates.checkApp() }) { Text("检查更新") }
         OutlinedButton(enabled = !updates.appBusy && updates.appRelease?.let { GitHubUpdates.newer(it.version, BuildConfig.VERSION_NAME) } == true,
-            onClick = { updates.downloadApp() }) { Text("下载更新") }
+            onClick = {
+                val version = updates.appRelease?.version.orEmpty()
+                Operations.runUpdateTask(
+                    "下载软件更新 $version",
+                    onCancel = updates::cancelApp,
+                    notStarted = "没有开始：已经是最新版本，或者正在检查 / 下载。",
+                ) { listener -> updates.downloadApp(listener) }
+            }) { Text("下载更新") }
         Button(enabled = updates.ready && !updates.appBusy, onClick = { updates.installApp() }) { Text("安装更新") }
         if (updates.appBusy) TextButton(onClick = { updates.cancelApp() }) { Text("取消下载 / 检查") }
     }
@@ -104,16 +112,25 @@ fun LoaderUpdateCard(onUpdated: () -> Unit, enabled: Boolean = true, actions: @C
             actions()
         }
     }
-    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("更新加载器？") }, text = {
-        Text("请先完全退出游戏。更新官方 SDK 和模组，保留 Android 引导、游戏注入与现有配置。完成后需重启游戏。")
-    }, confirmButton = { TextButton(onClick = {
-        confirm = false
-        if (enabled) {
-            val version = updates.loaderRelease?.version.orEmpty()
-            Operations.runLoaderTask("更新加载器到 $version", onCancel = updates::cancelLoader) { listener ->
-                updates.updateLoader(listener, onUpdated)
-            }
-        }
-    }) { Text("已退出游戏，开始更新") } },
-        dismissButton = { TextButton(onClick = { confirm = false }) { Text("取消") } })
+    if (confirm) {
+        val version = updates.loaderRelease?.version.orEmpty()
+        ConfirmDialog(
+            title = "更新加载器到 $version？",
+            lines = listOf(
+                "从 GitHub 下载并更新官方 SDK 和模组。",
+                "保留 Android 引导、游戏注入和现有配置。",
+                "请先完全退出游戏，完成后重启游戏生效。",
+            ),
+            confirmLabel = "已退出游戏，开始更新",
+            onConfirm = {
+                confirm = false
+                if (enabled) {
+                    Operations.runUpdateTask("更新加载器到 $version", onCancel = updates::cancelLoader) { listener ->
+                        updates.updateLoader(listener, onUpdated)
+                    }
+                }
+            },
+            onDismiss = { confirm = false },
+        )
+    }
 }

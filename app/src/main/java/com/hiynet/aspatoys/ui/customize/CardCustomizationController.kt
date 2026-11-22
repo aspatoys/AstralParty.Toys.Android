@@ -162,7 +162,7 @@ class CardCustomizationController(private val container: AppContainer, private v
         notice = "已移除此卡面替换。应用到游戏后，完全重启游戏使用原图。"
     }
 
-    fun remove(id: String) = operation("正在删除方案") {
+    fun remove(id: String) = operation("正在删除方案", title = "删除卡牌方案「${profileName(id)}」") {
         require(selected != id) { "请先切换到游戏默认卡面，再删除当前方案。" }
         withContext(Dispatchers.IO) {
             if (game.snapshot(container.settings.loaderRootPath).profiles.any { it.id == id }) game.remove(container.settings.loaderRootPath, id)
@@ -218,7 +218,7 @@ class CardCustomizationController(private val container: AppContainer, private v
         }
     }
 
-    private fun profileName(id: String) = profiles.firstOrNull { it.id == id }?.name?.takeIf { it.isNotBlank() } ?: id
+    fun profileName(id: String) = profiles.firstOrNull { it.id == id }?.name?.takeIf { it.isNotBlank() } ?: id
     private fun displayName(uri: Uri): String = runCatching {
         app.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
     }.getOrNull() ?: "cards.zip"

@@ -57,7 +57,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.hiynet.aspatoys.data.updates.LoaderProgressListener
+import com.hiynet.aspatoys.data.updates.UpdateProgressListener
 import com.hiynet.aspatoys.ui.format.Formats
 import com.hiynet.aspatoys.ui.theme.ToysMotion
 import kotlinx.coroutines.launch
@@ -211,14 +211,19 @@ object Operations {
     }
 
     /**
-     * 把 [Updates] 的加载器导入 / 更新接到进度面板上。
+     * 把 `Updates` 里的下载类任务（加载器导入 / 更新、软件更新下载）接到进度面板上。
      *
-     * [launch] 返回 false（没有开始）时直接把面板标成失败，免得面板一直转圈。
-     * 下载阶段可以取消；下载结束、开始写加载器目录后底层不可中断，面板也就不再显示「取消」。
+     * [launch] 返回 false（没有开始）时直接把面板标成失败，免得面板一直转圈；[notStarted] 是那时显示的原因。
+     * 下载阶段可以取消；下载结束、开始校验或写文件后，面板就不再显示「取消」。
      */
-    fun runLoaderTask(title: String, onCancel: (() -> Unit)? = null, launch: (LoaderProgressListener) -> Boolean) {
+    fun runUpdateTask(
+        title: String,
+        onCancel: (() -> Unit)? = null,
+        notStarted: String = "没有开始：另一个加载器操作还在进行，或者还没检查到可用版本。",
+        launch: (UpdateProgressListener) -> Boolean,
+    ) {
         val operation = start(title, onCancel) ?: return
-        val listener = object : LoaderProgressListener {
+        val listener = object : UpdateProgressListener {
             private var downloaded = false
             private var lastPercent = -1
 
@@ -244,7 +249,7 @@ object Operations {
                 if (success) operation.succeed(text) else operation.fail(text)
             }
         }
-        if (!launch(listener)) operation.fail("没有开始：另一个加载器操作还在进行，或者还没检查到可用版本。")
+        if (!launch(listener)) operation.fail(notStarted)
     }
 
     private fun post(block: () -> Unit) {

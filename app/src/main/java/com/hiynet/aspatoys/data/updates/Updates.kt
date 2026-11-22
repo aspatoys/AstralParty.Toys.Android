@@ -21,7 +21,7 @@ import java.security.MessageDigest
  * 让界面跟随加载器导入 / 更新的过程（例如画进度面板）。不传时只更新 [Updates.loaderStatus]，和以前一样。
  * 回调可能在后台线程上。
  */
-interface LoaderProgressListener {
+interface UpdateProgressListener {
     /** 换到下一步，或者底层打了一行进度。 */
     fun step(text: String)
     /** 下载字节进度；total 未知时为 0。 */
@@ -98,24 +98,39 @@ class Updates private constructor(context: Context) {
             finally { appBusy = false; appCancel = null }
         }
     }
-    fun downloadApp() {
-        val release = appRelease ?: return
-        if (appBusy || !GitHubUpdates.newer(release.version, BuildConfig.VERSION_NAME)) return
+    /**
+     * 手动下载软件更新。[listener] 只给手动下载用；打开应用时的自动下载不传，保持安静，不弹东西挡人。
+     * 返回 false 表示没有开始（没有更新的版本，或者正在检查 / 下载），此时不会回调 [listener]。
+     */
+    fun downloadApp(listener: UpdateProgressListener? = null): Boolean {
+        val release = appRelease ?: return false
+        if (appBusy || !GitHubUpdates.newer(release.version, BuildConfig.VERSION_NAME)) return false
         appBusy = true; val cancel = HttpCancellation(); appCancel = cancel
         scope.launch {
-            try { downloadAppNow(release, cancel) }
-            catch (error: Exception) { ready = false; appStatus = error.message ?: "下载失败" }
+            try { downloadAppNow(release, cancel, listener) }
+            catch (error: Exception) {
+                ready = false; appStatus = error.message ?: "下载失败"
+                listener?.finished(false, "下载失败：$appStatus")
+            }
             finally { appBusy = false; appCancel = null }
         }
+        return true
     }
-    private suspend fun downloadAppNow(release: UpdateRelease, cancel: HttpCancellation) {
+    private suspend fun downloadAppNow(release: UpdateRelease, cancel: HttpCancellation, listener: UpdateProgressListener? = null) {
         ready = false
         withContext(Dispatchers.IO) {
-            github.download(release, apkFile, cancel) { count, total -> appStatus = "下载软件更新 ${if (total > 0) "${count * 100 / total}%" else "${count / 1024} KB"}" }
+            listener?.step("正在下载 ${release.version}…")
+            github.download(release, apkFile, cancel) { count, total ->
+                appStatus = "下载软件更新 ${if (total > 0) "${count * 100 / total}%" else "${count / 1024} KB"}"
+                listener?.download(count, total)
+            }
+            listener?.step("正在校验 SHA-256 和签名…")
             validateApk(apkFile, release)
         }
         ready = true; appStatus = "${release.version} 已下载并通过签名校验，可安装"
-        if (autoInstall && foreground) installApp()
+        val openInstaller = autoInstall && foreground
+        listener?.finished(true, if (openInstaller) "$appStatus。正在打开系统安装界面…" else "$appStatus。点「安装更新」交给系统安装。")
+        if (openInstaller) installApp()
     }
     @Suppress("DEPRECATION")
     private fun validateApk(file: File, release: UpdateRelease) {
@@ -177,7 +192,7 @@ class Updates private constructor(context: Context) {
         }
     }
     /** 返回 false 表示没有开始（没检查过版本，或者已有加载器操作在进行），此时不会回调 [listener]。 */
-    fun updateLoader(listener: LoaderProgressListener? = null, onUpdated: () -> Unit): Boolean {
+    fun updateLoader(listener: UpdateProgressListener? = null, onUpdated: () -> Unit): Boolean {
         val release = loaderRelease ?: return false
         if (loaderBusy) return false
         val root = AppSettings(app).loaderRootPath // Capture once; settings changes never redirect a running update.
@@ -216,7 +231,7 @@ class Updates private constructor(context: Context) {
         return true
     }
     /** 返回 false 表示没有开始（已有加载器操作在进行），此时不会回调 [listener]。 */
-    fun importLoader(uri: Uri, listener: LoaderProgressListener? = null, onUpdated: () -> Unit): Boolean {
+    fun importLoader(uri: Uri, listener: UpdateProgressListener? = null, onUpdated: () -> Unit): Boolean {
         if (loaderBusy) return false
         val root = AppSettings(app).loaderRootPath // Capture once; settings changes never redirect a running import.
         loaderBusy = true
