@@ -36,6 +36,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -526,7 +527,7 @@ private fun SettingsDetailView(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Button(onClick = {
+                        FilledTonalButton(onClick = {
                             settings.loaderRootPath = loaderRootDraft
                             loaderRootDraft = settings.loaderRootPath
                             notice = "加载器根目录已保存。"
@@ -563,7 +564,7 @@ private fun SettingsDetailView(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Button(onClick = {
+                        FilledTonalButton(onClick = {
                             settings.downloadsPath = downloadsDraft
                             downloadsDraft = settings.downloadsPath
                             notice = "下载目录已保存。"

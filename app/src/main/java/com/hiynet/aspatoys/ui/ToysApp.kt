@@ -160,6 +160,7 @@ fun ToysApp() {
                                 cards = cards,
                                     container = container,
                                     onOpenSettings = { destination = Destination.SETTINGS },
+                                    onOpenLoader = { destination = Destination.LOADER },
                                     modifier = if (destination == Destination.MARKET) Modifier.fillMaxSize()
                                         else Modifier.widthIn(max = 980.dp).fillMaxHeight(),
                                 )
@@ -183,6 +184,7 @@ fun ToysApp() {
                                 cards = cards,
                                 container = container,
                                 onOpenSettings = { destination = Destination.SETTINGS },
+                                    onOpenLoader = { destination = Destination.LOADER },
                                 modifier = Modifier.fillMaxSize().padding(innerPadding),
                             )
                         }
@@ -203,6 +205,7 @@ private fun DestinationContent(
     container: AppContainer,
     onOpenSettings: () -> Unit,
     modifier: Modifier,
+    onOpenLoader: () -> Unit = {},
 ) {
     Box(modifier = modifier) {
         AnimatedContent(
@@ -222,7 +225,7 @@ private fun DestinationContent(
             label = "destination",
         ) { target ->
             when (target) {
-                Destination.MODS -> ModsScreen(controller = mods)
+                Destination.MODS -> ModsScreen(controller = mods, onOpenLoader = onOpenLoader)
 
                 Destination.MARKET -> MarketScreen(controller = market)
 

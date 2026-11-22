@@ -28,6 +28,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -57,6 +58,7 @@ import com.hiynet.aspatoys.data.market.MarketModDetail
 import com.hiynet.aspatoys.data.market.MarketModVersion
 import com.hiynet.aspatoys.data.settings.AppSettings
 import com.hiynet.aspatoys.ui.components.CoverThumb
+import com.hiynet.aspatoys.ui.components.EmphasisButton
 import com.hiynet.aspatoys.ui.components.MessageBanner
 import com.hiynet.aspatoys.ui.components.Operations
 import com.hiynet.aspatoys.ui.components.PackageReportContent
@@ -300,7 +302,7 @@ private fun MarketSearchBar(controller: MarketController) {
             placeholder = { Text("搜索模组名称或作者") },
             modifier = Modifier.weight(1f),
         )
-        Button(onClick = controller::submitSearch) { Text("搜索") }
+        FilledTonalButton(onClick = controller::submitSearch) { Text("搜索") }
     }
 }
 
@@ -589,7 +591,10 @@ private fun VersionRow(
             }
         }
         Spacer(Modifier.width(8.dp))
-        Button(onClick = onDownload, enabled = !downloading) { Text(if (isLatest) "下载并安装" else "安装此版本") }
+        // 详情里只有最新版是主按钮；旧版本退成线框，一屏不再并排一串实心按钮。
+        EmphasisButton(primary = isLatest, onClick = onDownload, enabled = !downloading) {
+            Text(if (isLatest) "下载并安装" else "安装此版本")
+        }
     }
 }
 

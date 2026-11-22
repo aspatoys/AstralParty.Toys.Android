@@ -14,6 +14,7 @@ import com.hiynet.aspatoys.BuildConfig
 import com.hiynet.aspatoys.data.updates.GitHubUpdates
 import com.hiynet.aspatoys.data.updates.Updates
 import com.hiynet.aspatoys.ui.components.ConfirmDialog
+import com.hiynet.aspatoys.ui.components.EmphasisButton
 import com.hiynet.aspatoys.ui.components.Operations
 
 @Composable
@@ -102,7 +103,11 @@ fun LoaderUpdateCard(onUpdated: () -> Unit, enabled: Boolean = true, actions: @C
             if (updates.loaderBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(enabled = enabled && !updates.loaderBusy, onClick = { updates.checkLoader() }) { Text("检查 GitHub 最新版") }
-                Button(enabled = enabled && !updates.loaderBusy && updates.loaderRelease != null, onClick = { confirm = true }) {
+                // 每页一个主按钮：GitHub 上确实有比已装版本新的才算主按钮，否则和别的按钮一样是线框。
+                val newer = updates.loaderRelease?.let { release ->
+                    updates.installedLoader.isNotBlank() && GitHubUpdates.newer(release.version, updates.installedLoader)
+                } == true
+                EmphasisButton(primary = newer, enabled = enabled && !updates.loaderBusy && updates.loaderRelease != null, onClick = { confirm = true }) {
                     Text(updates.loaderRelease?.let { "更新到 ${it.version}" } ?: "从 GitHub 更新")
                 }
                 TextButton(onClick = { uri.openUri("https://github.com/${GitHubUpdates.LOADER_REPO}/releases/latest") }) { Text("GitHub") }

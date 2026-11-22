@@ -58,6 +58,7 @@ import com.hiynet.aspatoys.installer.LoaderInstaller
 import com.hiynet.aspatoys.installer.RootShell
 import com.hiynet.aspatoys.installer.ShizukuShell
 import com.hiynet.aspatoys.ui.components.ConfirmDialog
+import com.hiynet.aspatoys.ui.components.EmphasisButton
 import com.hiynet.aspatoys.ui.components.Operations
 import com.hiynet.aspatoys.ui.components.SkeletonLine
 import com.hiynet.aspatoys.ui.components.Snackbars
@@ -205,8 +206,11 @@ fun LoaderScreen(
                 },
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                // 每页一个主按钮：还没授权时，授权就是这一页最该点的。
+                val needsGrant = status != null && status?.shizukuGranted != true
                 if (ShizukuShell.selectedMode() == AppSettings.PrivilegeRoot) {
-                    OutlinedButton(
+                    EmphasisButton(
+                        primary = needsGrant,
                         onClick = {
                             RootShell.reset()
                             refresh()
@@ -214,7 +218,7 @@ fun LoaderScreen(
                         enabled = !operationBusy,
                     ) { Text("重新检测 Root") }
                 } else {
-                    OutlinedButton(onClick = {
+                    EmphasisButton(primary = needsGrant, onClick = {
                         // 服务没运行时 requestPermission() 什么都不做，用户会以为按钮坏了。
                         if (ShizukuShell.isServiceAlive()) ShizukuShell.requestPermission()
                         else Snackbars.show("Shizuku 没在运行：先打开 Shizuku App 启动服务，再回来点「授权 Shizuku」。")
@@ -277,7 +281,9 @@ fun LoaderScreen(
         ) {
             Text("操作前请完全退出游戏。禁用会保留文件；卸载会删除模组、配置和预设。",
                 style = MaterialTheme.typography.bodySmall)
-            Button(modifier = Modifier.fillMaxWidth(),
+            // 授权了、但还没装加载器时，安装才是主按钮；装好之后退成线框（重装 / 覆盖不是常用操作）。
+            EmphasisButton(primary = status?.shizukuGranted == true && status?.loaderPayload != true,
+                modifier = Modifier.fillMaxWidth(),
                 enabled = !operationBusy && status?.shizukuGranted == true,
                 onClick = { pendingAction = "安装内置加载器" }) { Text("安装内置加载器") }
             OutlinedButton(
