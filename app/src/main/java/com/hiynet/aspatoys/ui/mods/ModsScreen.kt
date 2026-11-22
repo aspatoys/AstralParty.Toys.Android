@@ -67,6 +67,7 @@ import com.hiynet.aspatoys.R
 import com.hiynet.aspatoys.data.mods.ModEntry
 import com.hiynet.aspatoys.data.mods.ModIssue
 import com.hiynet.aspatoys.ui.components.MessageBanner
+import com.hiynet.aspatoys.ui.components.Operations
 import com.hiynet.aspatoys.ui.components.PackageReportContent
 import com.hiynet.aspatoys.ui.components.Pill
 import com.hiynet.aspatoys.ui.components.SkeletonList
@@ -276,8 +277,9 @@ fun ModsScreen(
         )
     }
 
+    // 安装进度画在全局进度面板（Operations）里；检查报告等面板关掉再弹出，免得两层叠在一起。
     val report = controller.report
-    if (showReport && report != null) {
+    if (showReport && report != null && Operations.current == null) {
         ModalBottomSheet(
             onDismissRequest = {
                 showReport = false

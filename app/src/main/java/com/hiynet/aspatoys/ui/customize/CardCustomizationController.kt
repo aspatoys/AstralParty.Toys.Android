@@ -15,6 +15,7 @@ import com.hiynet.aspatoys.data.AppContainer
 import com.hiynet.aspatoys.data.cards.CardPackageStore
 import com.hiynet.aspatoys.data.cards.GameCardProfiles
 import com.hiynet.aspatoys.data.loader.ShizukuLoaderFs
+import com.hiynet.aspatoys.ui.components.Operations
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -78,13 +79,13 @@ class CardCustomizationController(private val container: AppContainer, private v
         rootPath = root; lastRoot = root
     }
 
-    fun importZip(uri: Uri) = operation("正在读取方案 ZIP") {
+    fun importZip(uri: Uri) = operation("正在读取方案 ZIP", title = "导入卡牌方案") {
         val name = withContext(Dispatchers.IO) { displayName(uri) }
         val file = File(store.root.apply { mkdirs() }, ".archive-${UUID.randomUUID()}.zip")
         try {
             val imported = withContext(Dispatchers.IO) {
                 app.contentResolver.openInputStream(uri)?.use { input -> file.outputStream().use { output -> input.copyTo(output) } } ?: error("无法读取 ZIP 文件。")
-                store.importZip(file, name) { progress = it }
+                store.importZip(file, name) { step(it) }
             }
             refreshNow()
             notice = "已导入 ${imported.size} 个方案，选择「应用到游戏」后生效。"
@@ -97,15 +98,18 @@ class CardCustomizationController(private val container: AppContainer, private v
         notice = "方案已创建，点卡牌即可替换图片。"
     }
 
-    fun apply(id: String) = operation("正在应用卡面") {
+    fun apply(id: String) = operation(
+        "正在应用卡面",
+        title = if (id == CardPackageStore.GameDefault) "恢复游戏默认卡面" else "应用卡牌方案「${profileName(id)}」",
+    ) {
         val root = container.settings.loaderRootPath
-        withContext(Dispatchers.IO) { game.apply(root, id) { progress = it } }
+        withContext(Dispatchers.IO) { game.apply(root, id) { step(it) } }
         refreshNow()
         notice = if (id == CardPackageStore.GameDefault) "已选择游戏默认卡面。请完全重启游戏。" else "方案已写入游戏。请完全重启游戏后使用。"
     }
 
     fun edit(id: String) = operation("正在打开卡牌方案") {
-        if (!hasLocal(id)) withContext(Dispatchers.IO) { game.fetch(container.settings.loaderRootPath, id) { progress = it } }
+        if (!hasLocal(id)) withContext(Dispatchers.IO) { game.fetch(container.settings.loaderRootPath, id) { step(it) } }
         editing = id; loadEditor(id)
     }
 
@@ -168,8 +172,8 @@ class CardCustomizationController(private val container: AppContainer, private v
         refreshNow(); notice = "方案已删除。"
     }
 
-    fun export(id: String, uri: Uri) = operation("正在导出 Win 兼容 ZIP") {
-        if (!hasLocal(id)) withContext(Dispatchers.IO) { game.fetch(container.settings.loaderRootPath, id) { progress = it } }
+    fun export(id: String, uri: Uri) = operation("正在导出 Win 兼容 ZIP", title = "导出卡牌方案「${profileName(id)}」") {
+        if (!hasLocal(id)) withContext(Dispatchers.IO) { game.fetch(container.settings.loaderRootPath, id) { step(it) } }
         val temp = File(store.root.apply { mkdirs() }, ".export-${UUID.randomUUID()}.zip")
         try {
             withContext(Dispatchers.IO) {
@@ -180,16 +184,41 @@ class CardCustomizationController(private val container: AppContainer, private v
         } finally { temp.delete() }
     }
 
-    private fun operation(message: String, block: suspend () -> Unit) {
+    /** 当前操作对应的进度面板；没有面板的小操作为 null。 */
+    @Volatile private var panel: Operations.Operation? = null
+
+    /** 底层的一行进度：页面底部的状态条和进度面板（如果有）都跟着走。可能在后台线程上调用。 */
+    private fun step(text: String) {
+        progress = text
+        panel?.log(text)
+    }
+
+    /**
+     * 执行一个操作。传了 [title] 的（导入、应用、导出这些会写文件、要等一会儿的）画进全局进度面板，
+     * 结果留在面板里、不自动关；不传的小操作照旧只用页面底部的状态条和提示。
+     */
+    private fun operation(message: String, title: String? = null, block: suspend () -> Unit) {
         if (busy) return
+        val sheet = if (title != null) Operations.start(title) ?: return else null
+        sheet?.status(message)
+        panel = sheet
         busy = true; progress = message; notice = null; failed = false
         scope.launch {
-            try { block() }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { failed = true; notice = error.message ?: "操作失败。" }
-            finally { busy = false; progress = "" }
+            try {
+                block()
+                // 有面板时结果写进面板，页面底部就不再重复一条。
+                if (sheet != null) { sheet.succeed(notice ?: "已完成。"); notice = null }
+            }
+            catch (cancelled: CancellationException) { sheet?.fail("已中断。"); throw cancelled }
+            catch (error: Exception) {
+                val text = error.message ?: "操作失败。"
+                if (sheet != null) sheet.fail(text) else { failed = true; notice = text }
+            }
+            finally { busy = false; progress = ""; panel = null }
         }
     }
+
+    private fun profileName(id: String) = profiles.firstOrNull { it.id == id }?.name?.takeIf { it.isNotBlank() } ?: id
     private fun displayName(uri: Uri): String = runCatching {
         app.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
     }.getOrNull() ?: "cards.zip"

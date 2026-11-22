@@ -57,6 +57,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.hiynet.aspatoys.data.updates.LoaderProgressListener
+import com.hiynet.aspatoys.ui.format.Formats
 import com.hiynet.aspatoys.ui.theme.ToysMotion
 import kotlinx.coroutines.launch
 
@@ -83,6 +85,9 @@ object Operations {
 
     /** 日志行数上限：一次安装可能打几百行，全留着会让面板越来越卡。 */
     private const val MaxLogLines = 300
+
+    /** 行尾计数「前缀 i / n」。 */
+    private val Counter = Regex("""^(.*?)\s*(\d+)\s*/\s*(\d+)$""")
 
     @Stable
     class Operation internal constructor(
@@ -112,13 +117,30 @@ object Operations {
         val running: Boolean get() = outcome == Outcome.Running
         val cancellable: Boolean get() = running && onCancel != null && cancelAllowed
 
-        /** 底层的一行日志：记进日志，同时作为当前状态。 */
+        /**
+         * 底层的一行日志：记进日志，同时作为当前状态。
+         *
+         * 行尾是「3 / 20」这种计数时（卡面导入、加载器更新都这样报），换算成确定进度条；
+         * 同一前缀的计数行只保留最新一条，不会刷出几百行。
+         */
         fun log(line: String) = post {
             if (!running) return@post
             val text = line.trim()
             if (text.isEmpty()) return@post
-            logs = (logs + text).takeLast(MaxLogLines)
+            val counter = Counter.matchEntire(text)
+            val previous = logs.lastOrNull()?.let { Counter.matchEntire(it) }
+            logs = if (counter != null && previous != null && previous.groupValues[1] == counter.groupValues[1]) {
+                logs.dropLast(1) + text
+            } else {
+                (logs + text).takeLast(MaxLogLines)
+            }
             headline = text
+            fraction = counter?.let {
+                val done = it.groupValues[2].toFloat()
+                val total = it.groupValues[3].toFloat()
+                if (total > 0f) done / total else null
+            }
+            detail = null
         }
 
         /**
@@ -186,6 +208,43 @@ object Operations {
     /** 用户关掉面板。进行中的操作不允许关。 */
     fun dismiss() {
         if (!busy) current = null
+    }
+
+    /**
+     * 把 [Updates] 的加载器导入 / 更新接到进度面板上。
+     *
+     * [launch] 返回 false（没有开始）时直接把面板标成失败，免得面板一直转圈。
+     * 下载阶段可以取消；下载结束、开始写加载器目录后底层不可中断，面板也就不再显示「取消」。
+     */
+    fun runLoaderTask(title: String, onCancel: (() -> Unit)? = null, launch: (LoaderProgressListener) -> Boolean) {
+        val operation = start(title, onCancel) ?: return
+        val listener = object : LoaderProgressListener {
+            private var downloaded = false
+            private var lastPercent = -1
+
+            override fun step(text: String) {
+                if (downloaded) operation.allowCancel(false)
+                operation.log(text)
+            }
+
+            override fun download(received: Long, total: Long) {
+                downloaded = true
+                val percent = if (total > 0) (received * 100 / total).toInt() else null
+                // 按百分比节流：底层每读一块都会回调。
+                val bucket = percent ?: (received / (256 * 1024)).toInt()
+                if (bucket == lastPercent) return
+                lastPercent = bucket
+                operation.progress(
+                    percent?.let { it / 100f },
+                    Formats.progressText(received, total.takeIf { it > 0 }, percent),
+                )
+            }
+
+            override fun finished(success: Boolean, text: String) {
+                if (success) operation.succeed(text) else operation.fail(text)
+            }
+        }
+        if (!launch(listener)) operation.fail("没有开始：另一个加载器操作还在进行，或者还没检查到可用版本。")
     }
 
     private fun post(block: () -> Unit) {

@@ -17,6 +17,19 @@ import kotlinx.coroutines.*
 import java.io.File
 import java.security.MessageDigest
 
+/**
+ * 让界面跟随加载器导入 / 更新的过程（例如画进度面板）。不传时只更新 [Updates.loaderStatus]，和以前一样。
+ * 回调可能在后台线程上。
+ */
+interface LoaderProgressListener {
+    /** 换到下一步，或者底层打了一行进度。 */
+    fun step(text: String)
+    /** 下载字节进度；total 未知时为 0。 */
+    fun download(received: Long, total: Long) {}
+    /** 结束：成功或失败，附上给用户看的说明。 */
+    fun finished(success: Boolean, text: String)
+}
+
 /** Process-wide jobs survive activity recreation; install prompts are only launched in the foreground. */
 class Updates private constructor(context: Context) {
     companion object {
@@ -163,21 +176,28 @@ class Updates private constructor(context: Context) {
             finally { loaderBusy = false; loaderCancel = null }
         }
     }
-    fun updateLoader(onUpdated: () -> Unit) {
-        val release = loaderRelease ?: return
-        if (loaderBusy) return
+    /** 返回 false 表示没有开始（没检查过版本，或者已有加载器操作在进行），此时不会回调 [listener]。 */
+    fun updateLoader(listener: LoaderProgressListener? = null, onUpdated: () -> Unit): Boolean {
+        val release = loaderRelease ?: return false
+        if (loaderBusy) return false
         val root = AppSettings(app).loaderRootPath // Capture once; settings changes never redirect a running update.
         loaderBusy = true; val cancel = HttpCancellation(); loaderCancel = cancel
+        fun step(text: String) { loaderStatus = text; listener?.step(text) }
         scope.launch {
             val stage = File(app.cacheDir, "updates/loader-stage-${java.util.UUID.randomUUID()}")
             try {
                 val result = withContext(Dispatchers.IO) {
                     check(fs.isAvailable()) { "请先在加载器页连接 Shizuku / Root。" }
-                    github.download(release, zipFile, cancel) { count, total -> loaderStatus = "下载加载器 ${if (total > 0) "${count * 100 / total}%" else "${count / 1024} KB"}" }
+                    listener?.step("正在下载加载器 ${release.version}…")
+                    github.download(release, zipFile, cancel) { count, total ->
+                        loaderStatus = "下载加载器 ${if (total > 0) "${count * 100 / total}%" else "${count / 1024} KB"}"
+                        listener?.download(count, total)
+                    }
+                    step("正在校验并解压发布包…")
                     val installer = ManagedLoaderUpdate(fs)
                     val pkg = installer.prepare(zipFile, release.version, stage)
                     cancel.throwIfCancelled()
-                    withContext(NonCancellable) { installer.install(root, pkg) { loaderStatus = it } }
+                    withContext(NonCancellable) { installer.install(root, pkg) { step(it) } }
                 }
                 loaderStatus = buildString {
                     append("加载器 ${release.version} 已更新；请完全重启游戏。安卓变速与相机已保留。")
@@ -185,16 +205,23 @@ class Updates private constructor(context: Context) {
                     if (result.skippedLocalMods.isNotEmpty())
                         append(" 以下模组在启用和停用目录中同时存在，已保留本地文件并跳过更新：${result.skippedLocalMods.joinToString("、")}。")
                 }
+                listener?.finished(true, loaderStatus)
                 refreshInstalled(); onUpdated()
-            } catch (error: Exception) { loaderStatus = "加载器更新失败：${error.message}" }
+            } catch (error: Exception) {
+                loaderStatus = "加载器更新失败：${error.message}"
+                listener?.finished(false, loaderStatus)
+            }
             finally { withContext(Dispatchers.IO) { stage.deleteRecursively() }; loaderBusy = false; loaderCancel = null }
         }
+        return true
     }
-    fun importLoader(uri: Uri, onUpdated: () -> Unit) {
-        if (loaderBusy) return
+    /** 返回 false 表示没有开始（已有加载器操作在进行），此时不会回调 [listener]。 */
+    fun importLoader(uri: Uri, listener: LoaderProgressListener? = null, onUpdated: () -> Unit): Boolean {
+        if (loaderBusy) return false
         val root = AppSettings(app).loaderRootPath // Capture once; settings changes never redirect a running import.
         loaderBusy = true
-        loaderStatus = "正在读取本地发布包…"
+        fun step(text: String) { loaderStatus = text; listener?.step(text) }
+        step("正在读取本地发布包…")
         scope.launch {
             val stage = File(app.cacheDir, "updates/loader-stage-${java.util.UUID.randomUUID()}")
             try {
@@ -217,10 +244,11 @@ class Updates private constructor(context: Context) {
                             }
                         }
                     }
+                    step("正在校验发布包清单和 SHA-256…")
                     val installer = ManagedLoaderUpdate(fs)
                     val pkg = installer.prepare(localZip, expectedVersion = null, staging = File(stage, "unpacked"))
                     val result = withContext(NonCancellable) {
-                        installer.install(root, pkg, source = "local-import") { loaderStatus = it }
+                        installer.install(root, pkg, source = "local-import") { step(it) }
                     }
                     pkg to result
                 }
@@ -229,14 +257,17 @@ class Updates private constructor(context: Context) {
                     if (result.skippedLocalMods.isNotEmpty())
                         append(" 以下模组在启用和停用目录中同时存在，已保留本地文件并跳过更新：${result.skippedLocalMods.joinToString("、")}。")
                 }
+                listener?.finished(true, loaderStatus)
                 refreshInstalled(); onUpdated()
             } catch (error: Exception) {
                 loaderStatus = "导入发布包失败：${error.message}"
+                listener?.finished(false, loaderStatus)
             } finally {
                 withContext(Dispatchers.IO) { stage.deleteRecursively() }
                 loaderBusy = false
             }
         }
+        return true
     }
     fun cancelLoader() { loaderCancel?.cancel() }
 }

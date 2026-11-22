@@ -13,6 +13,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.hiynet.aspatoys.BuildConfig
 import com.hiynet.aspatoys.data.updates.GitHubUpdates
 import com.hiynet.aspatoys.data.updates.Updates
+import com.hiynet.aspatoys.ui.components.Operations
 
 @Composable
 fun UpdateAutomation() {
@@ -105,6 +106,14 @@ fun LoaderUpdateCard(onUpdated: () -> Unit, enabled: Boolean = true, actions: @C
     }
     if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("更新加载器？") }, text = {
         Text("请先完全退出游戏。更新官方 SDK 和模组，保留 Android 引导、游戏注入与现有配置。完成后需重启游戏。")
-    }, confirmButton = { TextButton(onClick = { confirm = false; if (enabled) updates.updateLoader(onUpdated) }) { Text("已退出游戏，开始更新") } },
+    }, confirmButton = { TextButton(onClick = {
+        confirm = false
+        if (enabled) {
+            val version = updates.loaderRelease?.version.orEmpty()
+            Operations.runLoaderTask("更新加载器到 $version", onCancel = updates::cancelLoader) { listener ->
+                updates.updateLoader(listener, onUpdated)
+            }
+        }
+    }) { Text("已退出游戏，开始更新") } },
         dismissButton = { TextButton(onClick = { confirm = false }) { Text("取消") } })
 }

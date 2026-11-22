@@ -14,6 +14,7 @@ import com.hiynet.aspatoys.data.mods.ModIssue
 import com.hiynet.aspatoys.data.mods.ModPackageException
 import com.hiynet.aspatoys.data.settings.StorageAccess
 import com.hiynet.aspatoys.installer.ShizukuShell
+import com.hiynet.aspatoys.ui.components.Operations
 import com.hiynet.aspatoys.ui.components.Toasts
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -272,23 +273,26 @@ class ModsController(
     fun installCheckedPackage() {
         val file = checkedPackage ?: run { message = "先检查一个模组包，再安装"; return }
         if (installing) return
+        val name = report?.modName?.takeIf { it.isNotBlank() } ?: file.name
+        // 进度和结果画在全局进度面板里；检查报告等面板关掉再弹出，失败时可以在报告里重试。
+        val operation = Operations.start("安装「$name」") ?: return
+        operation.status("正在写入加载器…")
         installing = true
         scope.launch {
             try {
-                val result = withContext(Dispatchers.IO) { repo.install(file) }
+                val result = withContext(Dispatchers.IO) { repo.install(file) { line -> operation.log(line) } }
                 val where = if (result.disabled) "disabled_mods" else "mods"
-                Toasts.show(context, "${result.modId} 已装入 $where")
-                message = buildString {
+                operation.succeed(buildString {
                     append("已安装 ${result.modId} 到 $where：${result.files} 个文件")
                     if (result.removed > 0) append("，清理 ${result.removed} 个旧文件")
-                }
+                    append("。完全重启游戏后生效。")
+                })
                 checkedPackage = null
                 report = null
                 scanNow()
             } catch (failure: Exception) {
-                val text = "安装到加载器失败：${failure.message ?: failure::class.java.simpleName}"
-                message = text
-                Toasts.show(context, text)
+                val reason = (failure.message ?: failure::class.java.simpleName).trimEnd('。', '.', ' ')
+                operation.fail("安装到加载器失败：$reason。点「完成」后可以在检查报告里重试。")
             } finally {
                 installing = false
             }

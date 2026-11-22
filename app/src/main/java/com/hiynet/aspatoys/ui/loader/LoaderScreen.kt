@@ -130,10 +130,12 @@ fun LoaderScreen(
 
     val pickReleaseZip = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            updates.importLoader(uri) {
-                refresh()
-                onLoaderChanged()
-                mods.reloadWorkspace()
+            Operations.runLoaderTask("导入加载器发布包") { listener ->
+                updates.importLoader(uri, listener) {
+                    refresh()
+                    onLoaderChanged()
+                    mods.reloadWorkspace()
+                }
             }
         }
     }
