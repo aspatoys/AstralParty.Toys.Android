@@ -20,7 +20,7 @@ class ManagedLoaderUpdate(private val fs: LoaderFs) {
         }
     }
     data class Package(val version: String, val files: Map<String, File>, val mods: List<String>)
-    fun prepare(zipFile: File, expectedVersion: String, staging: File): Package {
+    fun prepare(zipFile: File, expectedVersion: String? = null, staging: File): Package {
         staging.mkdirs()
         ZipFile(zipFile).use { zip ->
             val entries = zip.entries().asSequence().filterNot { it.isDirectory }.toList()
@@ -36,7 +36,9 @@ class ManagedLoaderUpdate(private val fs: LoaderFs) {
             val manifestEntry = zip.getEntry("cesium-loader.json") ?: error("加载器 ZIP 缺少发行清单。")
             require(manifestEntry.size <= 2 * 1024 * 1024) { "发行清单过大。" }
             val manifest = parseJsonObjectOrNull(zip.getInputStream(manifestEntry).use { it.readBytes().toString(Charsets.UTF_8) }) ?: error("发行清单无效。")
-            require(manifest.string("version") == expectedVersion) { "加载器 ZIP 与检查到的版本不一致。" }
+            val version = manifest.string("version").trim()
+            require(version.isNotEmpty() && version.length <= 64) { "发行清单缺少版本号。" }
+            if (expectedVersion != null) require(version == expectedVersion) { "加载器 ZIP 与检查到的版本不一致。" }
             val hashes = manifest["files"] as? JsonObject ?: error("发行清单缺少文件校验。")
             val files = linkedMapOf<String, File>()
             val mods = linkedSetOf<String>()
@@ -65,7 +67,7 @@ class ManagedLoaderUpdate(private val fs: LoaderFs) {
             }
             require(files.containsKey("sdk/CesiumLoader.SDK.dll") && mods.isNotEmpty()) { "加载器包缺少托管 SDK 或模组。" }
             for (id in mods) require(files.containsKey("mods/$id/$id.dll")) { "模组 $id 缺少主体 DLL。" }
-            return Package(expectedVersion, files, mods.toList())
+            return Package(version, files, mods.toList())
         }
     }
 
@@ -79,7 +81,12 @@ class ManagedLoaderUpdate(private val fs: LoaderFs) {
     private fun conflictingMods(root: String, ids: Collection<String>): List<String> =
         ids.filter { hasDll(root, "mods", it) && hasDll(root, "disabled_mods", it) }
 
-    fun install(root: String, pkg: Package, progress: (String) -> Unit = {}): InstallResult {
+    fun install(
+        root: String,
+        pkg: Package,
+        source: String = "https://github.com/${GitHubUpdates.LOADER_REPO}",
+        progress: (String) -> Unit = {},
+    ): InstallResult {
         require(pkg.files.keys.all { relative ->
             require(safePath(relative) == relative) { "部署路径必须使用标准分隔符。" }
             val parts = relative.split('/')
@@ -114,7 +121,7 @@ class ManagedLoaderUpdate(private val fs: LoaderFs) {
             val index = oldIndex.toMutableMap()
             index["sdkVersion"] = JsonPrimitive(pkg.version)
             index["loaderVersion"] = JsonPrimitive(pkg.version)
-            index["source"] = JsonPrimitive("https://github.com/${GitHubUpdates.LOADER_REPO}")
+            index["source"] = JsonPrimitive(source)
             index["updatedAt"] = JsonPrimitive(java.time.Instant.now().toString())
             local.writeText(JsonObject(index).toString())
             planned["installed.json"] = local // Publish version only after all SDK/mod files have committed.

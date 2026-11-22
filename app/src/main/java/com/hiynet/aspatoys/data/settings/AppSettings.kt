@@ -100,12 +100,12 @@ class AppSettings(context: Context) {
         }
 
     val selectedGamePackage: String?
-        get() = prefs.getString(KeyGamePackage, null)?.takeIf(AndroidPaths::isGamePackage)
+        get() = prefs.getString(KeyGamePackage, null)?.takeIf(AndroidPaths::isValidPackageName)
 
     var gamePackage: String
         get() = selectedGamePackage ?: GamePackage
         set(value) {
-            require(AndroidPaths.isGamePackage(value))
+            require(AndroidPaths.isValidPackageName(value)) { "不支持的应用包名：$value" }
             prefs.edit().putString(KeyGamePackage, value).apply()
         }
 

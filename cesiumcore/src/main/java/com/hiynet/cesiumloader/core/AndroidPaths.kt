@@ -28,6 +28,8 @@ object AndroidPaths {
     private val PackageName = Regex(
         "(?:com\\.feimo\\.(?:astralparty|jxpd)|com\\.(?:astralparty|jxpd)(?:\\.feimo)?|com\\.tencent\\.tmgp\\.(?:feimo\\.)?(?:astralparty|jxpd))(?:\\.[A-Za-z0-9_]+)*",
     )
+    private const val SelfPackage = "com.hiynet.aspatoys"
+    private val ValidPackageName = Regex("[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)+")
     private val GameFilesPath = Regex("^/(?:sdcard|storage/emulated/\\d+)/Android/data/([^/]+)/files(?:/|$)")
 
     /** 热更 bundle 缓存目录（相对游戏 files 目录）。 */
@@ -46,11 +48,17 @@ object AndroidPaths {
     fun isGamePackage(packageName: String?): Boolean =
         packageName != null && PackageName.matches(packageName) && !packageName.contains("jpn", ignoreCase = true)
 
+    fun isValidPackageName(packageName: String?): Boolean =
+        packageName != null &&
+            packageName.length <= 255 &&
+            ValidPackageName.matches(packageName) &&
+            !packageName.equals(SelfPackage, ignoreCase = true)
+
     fun gamePackageForPath(path: String): String? =
-        GameFilesPath.find(path)?.groupValues?.get(1)?.takeIf(::isGamePackage)
+        GameFilesPath.find(path)?.groupValues?.get(1)?.takeIf(::isValidPackageName)
 
     fun gameLoaderDir(packageName: String): File {
-        require(isGamePackage(packageName)) { "不支持的游戏包名：$packageName" }
+        require(isValidPackageName(packageName)) { "不支持的游戏包名：$packageName" }
         return File(gameFilesDir(packageName), LoaderFolderName)
     }
 }

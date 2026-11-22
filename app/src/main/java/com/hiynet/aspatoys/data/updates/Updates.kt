@@ -190,5 +190,53 @@ class Updates private constructor(context: Context) {
             finally { withContext(Dispatchers.IO) { stage.deleteRecursively() }; loaderBusy = false; loaderCancel = null }
         }
     }
+    fun importLoader(uri: Uri, onUpdated: () -> Unit) {
+        if (loaderBusy) return
+        val root = AppSettings(app).loaderRootPath // Capture once; settings changes never redirect a running import.
+        loaderBusy = true
+        loaderStatus = "正在读取本地发布包…"
+        scope.launch {
+            val stage = File(app.cacheDir, "updates/loader-stage-${java.util.UUID.randomUUID()}")
+            try {
+                val (pkg, result) = withContext(Dispatchers.IO) {
+                    check(fs.isAvailable()) { "请先在加载器页连接 Shizuku / Root。" }
+                    stage.mkdirs()
+                    val localZip = File(stage, "imported-loader.zip")
+                    val input = app.contentResolver.openInputStream(uri) ?: error("无法读取所选发布包。")
+                    input.use { src ->
+                        localZip.outputStream().use { dst ->
+                            val buffer = ByteArray(64 * 1024)
+                            var total = 0L
+                            val limit = 256L * 1024 * 1024
+                            while (true) {
+                                val read = src.read(buffer)
+                                if (read < 0) break
+                                total += read
+                                require(total <= limit) { "发布包文件过大（上限 256 MB）。" }
+                                dst.write(buffer, 0, read)
+                            }
+                        }
+                    }
+                    val installer = ManagedLoaderUpdate(fs)
+                    val pkg = installer.prepare(localZip, expectedVersion = null, staging = File(stage, "unpacked"))
+                    val result = withContext(NonCancellable) {
+                        installer.install(root, pkg, source = "local-import") { loaderStatus = it }
+                    }
+                    pkg to result
+                }
+                loaderStatus = buildString {
+                    append("已导入发布包 ${pkg.version}（${pkg.mods.size} 个模组）；请完全重启游戏。安卓变速与相机已保留。")
+                    if (result.skippedLocalMods.isNotEmpty())
+                        append(" 以下模组在启用和停用目录中同时存在，已保留本地文件并跳过更新：${result.skippedLocalMods.joinToString("、")}。")
+                }
+                refreshInstalled(); onUpdated()
+            } catch (error: Exception) {
+                loaderStatus = "导入发布包失败：${error.message}"
+            } finally {
+                withContext(Dispatchers.IO) { stage.deleteRecursively() }
+                loaderBusy = false
+            }
+        }
+    }
     fun cancelLoader() { loaderCancel?.cancel() }
 }
