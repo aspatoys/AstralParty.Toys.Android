@@ -20,7 +20,20 @@ class ManagedLoaderUpdate(private val fs: LoaderFs) {
         }
     }
     data class Package(val version: String, val files: Map<String, File>, val mods: List<String>)
-    fun prepare(zipFile: File, expectedVersion: String? = null, staging: File): Package {
+
+    /**
+     * 校验并解压发布包。
+     *
+     * 带上 [progress] 才会有进度：这一步要解压并逐个算 SHA-256，是整条链路里最慢的一段，
+     * 不上报时界面会一直停在"正在校验并解压发布包…"上，看起来像卡死。
+     * 行尾用 `i / n` 的写法，进度面板会把它渲染成确定进度条。
+     */
+    fun prepare(
+        zipFile: File,
+        expectedVersion: String? = null,
+        staging: File,
+        progress: (String) -> Unit = {},
+    ): Package {
         staging.mkdirs()
         ZipFile(zipFile).use { zip ->
             val entries = zip.entries().asSequence().filterNot { it.isDirectory }.toList()
@@ -42,7 +55,10 @@ class ManagedLoaderUpdate(private val fs: LoaderFs) {
             val hashes = manifest["files"] as? JsonObject ?: error("发行清单缺少文件校验。")
             val files = linkedMapOf<String, File>()
             val mods = linkedSetOf<String>()
+            var examined = 0
             for (entry in entries) {
+                examined++
+                progress("正在校验并解压发布包 $examined / ${entries.size}")
                 if (!entry.name.startsWith("AstralParty_ModLoader/")) continue
                 val relative = entry.name.removePrefix("AstralParty_ModLoader/")
                 if (relative.endsWith(".pdb", true)) continue

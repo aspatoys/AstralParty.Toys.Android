@@ -210,7 +210,8 @@ class Updates private constructor(context: Context) {
                     }
                     step("正在校验并解压发布包…")
                     val installer = ManagedLoaderUpdate(fs)
-                    val pkg = installer.prepare(zipFile, release.version, stage)
+                    // 解压 + 逐个 SHA-256 是整条链路最慢的一段，按文件把进度报给面板。
+                    val pkg = installer.prepare(zipFile, release.version, stage) { step(it) }
                     cancel.throwIfCancelled()
                     withContext(NonCancellable) { installer.install(root, pkg) { step(it) } }
                 }
@@ -261,7 +262,7 @@ class Updates private constructor(context: Context) {
                     }
                     step("正在校验发布包清单和 SHA-256…")
                     val installer = ManagedLoaderUpdate(fs)
-                    val pkg = installer.prepare(localZip, expectedVersion = null, staging = File(stage, "unpacked"))
+                    val pkg = installer.prepare(localZip, expectedVersion = null, staging = File(stage, "unpacked")) { step(it) }
                     val result = withContext(NonCancellable) {
                         installer.install(root, pkg, source = "local-import") { step(it) }
                     }
