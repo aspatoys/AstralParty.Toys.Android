@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hiynet.aspatoys.data.cards.CardPackageStore
 import com.hiynet.aspatoys.ui.components.ConfirmDialog
+import com.hiynet.aspatoys.ui.components.Operations
 import com.hiynet.aspatoys.ui.theme.ToysPageHeading
 import com.hiynet.aspatoys.ui.theme.toysPanel
 import kotlinx.coroutines.Dispatchers
@@ -131,7 +132,8 @@ fun CardCustomizationScreen(controller: CardCustomizationController, modifier: M
                 onAdd = { binding = ""; addCard = true },
                 onExport = { exportId = editing; exportPicker.launch("$editing.zip") })
         }
-        if (controller.busy) {
+        // 走进度面板的操作（导入、应用、导出、删除）由面板 / 胶囊显示进度，这里不再重复一条。
+        if (controller.busy && !Operations.busy) {
             LinearProgressIndicator(Modifier.fillMaxWidth().testTag("cards.progress"))
             Text(controller.progress, Modifier.padding(horizontal = 20.dp, vertical = 6.dp), style = MaterialTheme.typography.bodySmall)
         }

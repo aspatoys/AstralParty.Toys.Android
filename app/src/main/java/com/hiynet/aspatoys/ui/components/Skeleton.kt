@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 private fun breathingAlpha(): Float {
+    // 系统关了动画时不呼吸，停在中间的透明度（Win 版减弱动效时骨架屏也不再闪）。
+    if (rememberReducedMotion()) return 0.6f
     val transition = rememberInfiniteTransition(label = "skeleton")
     val alpha by transition.animateFloat(
         initialValue = 0.35f,

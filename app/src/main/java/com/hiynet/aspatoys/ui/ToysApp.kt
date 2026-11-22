@@ -191,7 +191,9 @@ fun ToysApp() {
                     }
                 }
                 // 多步骤操作的进度面板：放在外壳最外层，切页签不会丢。
-                OperationHost()
+                // 收起后的胶囊在竖屏要让开悬浮导航栏（约 84dp 高），横屏贴着底边。
+                val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+                OperationHost(pillBottomPadding = if (landscape) 16.dp else 96.dp)
             }
         }
     }
