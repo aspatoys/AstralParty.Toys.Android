@@ -114,6 +114,16 @@ class AppSettings(context: Context) {
         set(value) { prefs.edit().putBoolean(KeyForceChannelCompatibility, value).apply() }
 
     /**
+     * 首次使用引导是否已经走完（或用户主动跳过）。
+     *
+     * 只有它是 false、并且当前目标下确实没有加载器时才弹引导；老用户升级上来时
+     * 启动检查会把已经装过加载器的情况自动标成 true，不会再被打扰。
+     */
+    var onboardingCompleted: Boolean
+        get() = prefs.getBoolean(KeyOnboardingCompleted, false)
+        set(value) { prefs.edit().putBoolean(KeyOnboardingCompleted, value).apply() }
+
+    /**
      * 当前游戏渠道的加载器根目录。
      *
      * 旧版本把这里默认成 `/sdcard/CesiumLoader`（桌面时代的布局）；现在的加载器装在游戏私有目录，
@@ -195,6 +205,7 @@ class AppSettings(context: Context) {
         private const val KeyPrivilegeMode = "privilege.mode"
         private const val KeyGamePackage = "game.package"
         private const val KeyForceChannelCompatibility = "loader.forceChannelCompatibility"
+        private const val KeyOnboardingCompleted = "onboarding.completed"
         private const val KeyLoaderRoot = "paths.loaderRoot"
         private const val KeyDownloads = "paths.downloads"
 

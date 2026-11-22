@@ -25,8 +25,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -51,6 +49,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import android.net.Uri
+import com.hiynet.aspatoys.data.apps.InstalledAppRepository
 import com.hiynet.aspatoys.data.loader.ShizukuLoaderFs
 import com.hiynet.aspatoys.data.settings.AppSettings
 import com.hiynet.aspatoys.installer.FolderPackageResolver
@@ -62,6 +61,7 @@ import com.hiynet.aspatoys.ui.components.EmphasisButton
 import com.hiynet.aspatoys.ui.components.Operations
 import com.hiynet.aspatoys.ui.components.SkeletonLine
 import com.hiynet.aspatoys.ui.components.Snackbars
+import com.hiynet.aspatoys.ui.components.TargetChip
 import com.hiynet.aspatoys.ui.mods.ModsController
 import com.hiynet.cesiumloader.core.AndroidPaths
 import kotlinx.coroutines.Dispatchers
@@ -87,10 +87,13 @@ fun LoaderScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val updates = remember { Updates.get(context) }
+    val targetApps = remember { InstalledAppRepository(context.applicationContext) }
     var gamePackage by remember { mutableStateOf(settings.gamePackage) }
     val installer = remember(gamePackage) { LoaderInstaller(context.applicationContext, gamePackage) }
+    /** 标题上的目标标记要显示应用名，读不到就回退包名。 */
+    val targetLabel = remember(gamePackage) { InstalledAppRepository.appLabel(context, gamePackage) }
     var gamePackages by remember { mutableStateOf(emptyList<String>()) }
-    var showGamePackages by remember { mutableStateOf(false) }
+    var showTargetPicker by remember { mutableStateOf(false) }
     var showPackagePicker by remember { mutableStateOf(false) }
     var folderPickerError by remember { mutableStateOf<String?>(null) }
     var forceChannelCompatibility by remember { mutableStateOf(settings.forceChannelCompatibility) }
@@ -163,7 +166,8 @@ fun LoaderScreen(
     fun run(action: String, block: ((String) -> Unit) -> LoaderInstaller.Status) {
         if (busy || updates.loaderBusy) return
         // 进度和日志画在全局进度面板里，结束后面板留着，用户点「完成」才关。
-        val operation = Operations.start(action) ?: return
+        // 标题带上目标应用：面板留在屏幕上时也能看出改的是哪个包。
+        val operation = Operations.start("$action → $targetLabel") ?: return
         busy = true
         scope.launch {
             try {
@@ -194,7 +198,19 @@ fun LoaderScreen(
             .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        ToysPageHeading("加载器", "授权访问后，安装或管理游戏加载器。")
+        // 装/卸会直接改游戏缓存，标题下面常驻标明现在动的是哪个包。
+        ToysPageHeading(
+            title = "加载器",
+            subtitle = "授权访问后，安装或管理游戏加载器。",
+            target = {
+                TargetChip(
+                    label = targetLabel,
+                    packageName = gamePackage,
+                    knownChannel = AndroidPaths.isGamePackage(gamePackage),
+                    onClick = { if (!operationBusy) showTargetPicker = true },
+                )
+            },
+        )
 
         ToysSection("访问权限") {
             PrivilegeModeCard(
@@ -236,9 +252,9 @@ fun LoaderScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 OutlinedButton(
-                    onClick = { showGamePackages = true },
-                    enabled = !operationBusy && gamePackages.any { it != gamePackage },
-                ) { Text(gamePackage) }
+                    onClick = { showTargetPicker = true },
+                    enabled = !operationBusy,
+                ) { Text("当前管理：$targetLabel") }
                 OutlinedButton(
                     onClick = {
                         folderPickerError = null
@@ -253,14 +269,6 @@ fun LoaderScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
-            }
-            DropdownMenu(expanded = showGamePackages, onDismissRequest = { showGamePackages = false }) {
-                gamePackages.forEach { candidate ->
-                    DropdownMenuItem(text = { Text(candidate) }, onClick = {
-                        showGamePackages = false
-                        selectGame(candidate, announce = true)
-                    })
-                }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(Modifier.weight(1f).padding(end = 12.dp)) {
@@ -407,8 +415,8 @@ fun LoaderScreen(
         } + "请先完全退出游戏。"
         ConfirmDialog(
             title = "$action？",
-            lines = lines,
-            footnote = "游戏：$gamePackage",
+            // 唯一会直接改游戏缓存的操作：目标写在最前面，免得切了渠道还照旧点下去。
+            lines = listOf("目标游戏：$targetLabel（$gamePackage）") + lines,
             confirmLabel = when (action) {
                 "卸载加载器" -> "永久卸载"
                 ImportReleaseAction -> "已退出游戏，选择发布包"
@@ -430,6 +438,24 @@ fun LoaderScreen(
                 } }
             },
             onDismiss = { pendingAction = null },
+        )
+    }
+    if (showTargetPicker) {
+        TargetAppPicker(
+            visible = true,
+            currentPackage = gamePackage,
+            repository = targetApps,
+            onSelect = { selected ->
+                showTargetPicker = false
+                selectGame(selected, announce = true)
+            },
+            onPickFolder = {
+                // 列表里找不到时的第三条路：走系统文件夹选择器（原来的「选择包体」）。
+                showTargetPicker = false
+                folderPickerError = null
+                showPackagePicker = true
+            },
+            onDismiss = { showTargetPicker = false },
         )
     }
     if (showPackagePicker) {

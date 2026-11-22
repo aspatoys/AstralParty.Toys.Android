@@ -16,6 +16,15 @@
         android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
 
+    <!--
+      目标游戏要从系统已安装应用里挑：各渠道服的包名事先并不知道，所以不能用白名单，
+      必须拿到完整包列表（targetSdk 37 下不加这条，PackageManager 只能看到极少数包，
+      选择列表就会是空的）。本应用走 GitHub Release 自行分发，不上架 Google Play。
+    -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
     <!-- Shizuku：安装器要写游戏的私有目录，只能借 shell(uid 2000) 身份执行命令。 -->
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 

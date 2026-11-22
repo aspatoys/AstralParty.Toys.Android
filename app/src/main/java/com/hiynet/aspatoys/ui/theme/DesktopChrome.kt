@@ -149,12 +149,23 @@ fun Modifier.toysPanel(corner: Int = 20): Modifier = this
     .background(MaterialTheme.colorScheme.surfaceContainerLow)
     .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.52f), RoundedCornerShape(corner.dp))
 
-/** Shared page hierarchy and spacing, following the reference installer's grouped layout. */
+/**
+ * Shared page hierarchy and spacing, following the reference installer's grouped layout.
+ *
+ * [target] 是给"会往加载器目录写东西"的页面挂"现在在改哪个包"用的（模组页、加载器页），
+ * 不传就是原来的两行标题，其它页面不受影响。
+ */
 @Composable
-fun ToysPageHeading(title: String, subtitle: String, modifier: Modifier = Modifier) {
+fun ToysPageHeading(
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    target: (@Composable () -> Unit)? = null,
+) {
     Column(modifier.padding(top = 8.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        target?.invoke()
     }
 }
 

@@ -77,6 +77,7 @@ import androidx.compose.foundation.verticalScroll
 import com.hiynet.aspatoys.ui.settings.SettingsScreen
 import com.hiynet.aspatoys.ui.components.OperationHost
 import com.hiynet.aspatoys.ui.components.ToysSnackbarHost
+import com.hiynet.aspatoys.ui.onboarding.LoaderOnboarding
 import com.hiynet.aspatoys.ui.theme.ToysBackdrop
 import com.hiynet.aspatoys.ui.theme.ToysMotion
 import com.hiynet.aspatoys.ui.theme.toysPressFeedback
@@ -109,7 +110,31 @@ fun ToysApp() {
     OverlayAppearanceSync(container.settings)
 
     val permissionVersion = ShizukuShell.permissionVersion
+
+    /**
+     * 首次使用引导：只在"还没走完引导"并且当前目标下确实没有加载器时出现。
+     *
+     * 老用户从旧版升上来时 `onboarding.completed` 还是 false，所以先问一次磁盘：
+     * 已经装了加载器就顺手补上标记，不再打扰。读不到状态（还没授权）时交给引导，
+     * 引导第一步可以跳过，不会把人卡住。
+     */
+    var onboarding by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(permissionVersion) {
+        if (container.settings.onboardingCompleted) {
+            onboarding = false
+            return@LaunchedEffect
+        }
+        val status = withContext(Dispatchers.IO) {
+            runCatching { LoaderInstaller(appContext, container.settings.gamePackage).status() }.getOrNull()
+        }
+        val needed = status == null || !status.shizukuGranted || !status.loaderPayload
+        if (!needed) container.settings.onboardingCompleted = true
+        onboarding = needed
+    }
+
+    LaunchedEffect(permissionVersion, onboarding) {
+        // 引导在跑（或还没判定完）的时候不要自动改目标：那一步就是让用户自己选一个。
+        if (onboarding != false) return@LaunchedEffect
         if (container.settings.selectedGamePackage != null) return@LaunchedEffect
         val target = withContext(Dispatchers.IO) {
             if (!ShizukuShell.isServiceAlive() || !ShizukuShell.hasPermission()) return@withContext null
@@ -188,6 +213,22 @@ fun ToysApp() {
                                 modifier = Modifier.fillMaxSize().padding(innerPadding),
                             )
                         }
+                    }
+                }
+                if (onboarding == true) {
+                    // 首次使用引导：整屏盖住外壳；进度面板画在它上面（下面那行 OperationHost）。
+                    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        LoaderOnboarding(
+                            settings = container.settings,
+                            onModeChanged = { mode ->
+                                container.settings.privilegeMode = mode
+                                ShizukuShell.setMode(mode)
+                            },
+                            onFinished = {
+                                onboarding = false
+                                mods.reloadWorkspace()
+                            },
+                        )
                     }
                 }
                 // 多步骤操作的进度面板：放在外壳最外层，切页签不会丢。

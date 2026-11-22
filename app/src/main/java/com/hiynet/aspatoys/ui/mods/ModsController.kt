@@ -70,6 +70,10 @@ class ModsController(
     var loaderRootPath by mutableStateOf(settings.loaderRootPath)
         private set
 
+    /** 当前正在管理的包名；模组页标题上的目标标记要跟着它变。 */
+    var gamePackage by mutableStateOf(settings.gamePackage)
+        private set
+
     var downloadsPath by mutableStateOf(settings.downloadsDir.path)
         private set
 
@@ -167,6 +171,7 @@ class ModsController(
     private suspend fun scanNow() {
         val ticket = ++scanTicket
         loaderRootPath = container.settings.loaderRootPath
+        gamePackage = container.settings.gamePackage
         downloadsPath = container.settings.downloadsDir.path
         allFilesAccess = StorageAccess.hasAllFilesAccess(context)
         val loaderRoot = container.settings.loaderRoot
@@ -203,6 +208,7 @@ class ModsController(
 
     fun reloadWorkspace() {
         loaderRootPath = settings.loaderRootPath
+        gamePackage = settings.gamePackage
         downloadsPath = settings.downloadsDir.path
         repo.invalidate()
         refreshJob?.cancel()

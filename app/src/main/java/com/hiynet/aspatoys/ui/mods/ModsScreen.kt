@@ -66,7 +66,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import com.hiynet.aspatoys.R
+import com.hiynet.aspatoys.data.apps.InstalledAppRepository
 import com.hiynet.aspatoys.data.mods.ModEntry
 import com.hiynet.aspatoys.data.mods.ModIssue
 import com.hiynet.aspatoys.ui.components.EmphasisButton
@@ -75,7 +77,9 @@ import com.hiynet.aspatoys.ui.components.Operations
 import com.hiynet.aspatoys.ui.components.PackageReportContent
 import com.hiynet.aspatoys.ui.components.Pill
 import com.hiynet.aspatoys.ui.components.SkeletonList
+import com.hiynet.aspatoys.ui.components.TargetChip
 import com.hiynet.aspatoys.ui.format.Formats
+import com.hiynet.cesiumloader.core.AndroidPaths
 import com.hiynet.aspatoys.ui.theme.ToysMotion
 import com.hiynet.aspatoys.ui.theme.ToysPageHeading
 import com.hiynet.aspatoys.ui.theme.toysPanel
@@ -96,6 +100,11 @@ fun ModsScreen(
 ) {
     var showReport by remember { mutableStateOf(false) }
     LaunchedEffect(controller.report) { showReport = controller.report != null }
+    val context = LocalContext.current
+    // 标题上的目标标记：当前在改哪个包的游戏，包名换了要跟着换应用名。
+    val targetLabel = remember(controller.gamePackage) {
+        InstalledAppRepository.appLabel(context, controller.gamePackage)
+    }
 
     val pickZip = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) controller.checkContentUri(uri)
@@ -139,7 +148,20 @@ fun ModsScreen(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                item { ToysPageHeading("模组管理", "管理已装模组，或从本地导入模组包。") }
+                item {
+                    ToysPageHeading(
+                        title = "模组管理",
+                        subtitle = "管理已装模组，或从本地导入模组包。",
+                        target = {
+                            TargetChip(
+                                label = targetLabel,
+                                packageName = controller.gamePackage,
+                                knownChannel = AndroidPaths.isGamePackage(controller.gamePackage),
+                                onClick = onOpenLoader,
+                            )
+                        },
+                    )
+                }
                 item {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),

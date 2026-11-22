@@ -63,6 +63,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hiynet.aspatoys.BuildConfig
 import com.hiynet.aspatoys.R
+import com.hiynet.aspatoys.data.apps.InstalledAppRepository
 import com.hiynet.aspatoys.data.market.MarketClient
 import com.hiynet.aspatoys.data.settings.AppSettings
 import com.hiynet.aspatoys.data.settings.StorageAccess
@@ -512,6 +513,11 @@ private fun SettingsDetailView(
                 }
 
                 ToysSection("加载器根目录") {
+                    Text(
+                        "当前管理：${InstalledAppRepository.appLabel(context, settings.gamePackage)}（${settings.gamePackage}）",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
                     Text(
                         "安卓版 CesiumLoader 根目录默认为 /sdcard/CesiumLoader；模组在 mods/ 下，配置在 configs/，日志在 logs/。",
                         style = MaterialTheme.typography.bodySmall,
