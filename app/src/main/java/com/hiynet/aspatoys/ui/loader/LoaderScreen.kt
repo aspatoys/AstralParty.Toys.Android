@@ -559,56 +559,57 @@ private fun FolderPackagePickerDialog(
                             )
                         }
                         Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 260.dp)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        filtered.forEach { folder ->
-                            val selectable = FolderPackageResolver.isSelectableComFolder(folder)
-                            val recognized = folder in recognizedPackages || AndroidPaths.isGamePackage(folder)
-                            val selected = selectable && folder == currentPackage
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(
-                                        if (selected) MaterialTheme.colorScheme.secondaryContainer
-                                        else MaterialTheme.colorScheme.surfaceContainerLow,
-                                    )
-                                    .clickable {
-                                        if (selectable) {
-                                            onSelect(folder)
-                                        } else {
-                                            currentPath = if (currentPath == "/") "/$folder" else "${currentPath.trimEnd('/')}/$folder"
-                                            query = ""
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 260.dp)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            filtered.forEach { folder ->
+                                val selectable = FolderPackageResolver.isSelectableComFolder(folder)
+                                val recognized = folder in recognizedPackages || AndroidPaths.isGamePackage(folder)
+                                val selected = selectable && folder == currentPackage
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(
+                                            if (selected) MaterialTheme.colorScheme.secondaryContainer
+                                            else MaterialTheme.colorScheme.surfaceContainerLow,
+                                        )
+                                        .clickable {
+                                            if (selectable) {
+                                                onSelect(folder)
+                                            } else {
+                                                currentPath = if (currentPath == "/") "/$folder" else "${currentPath.trimEnd('/')}/$folder"
+                                                query = ""
+                                            }
                                         }
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    folder,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = if (selected || selectable) FontWeight.SemiBold else FontWeight.Normal,
-                                    color = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.weight(1f).padding(end = 8.dp),
-                                )
-                                Text(
-                                    when {
-                                        recognized -> "已识别 · 选择"
-                                        selectable -> "选择"
-                                        else -> "打开"
-                                    },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = when {
-                                        recognized || selectable -> MaterialTheme.colorScheme.primary
-                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                    },
-                                )
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        folder,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = if (selected || selectable) FontWeight.SemiBold else FontWeight.Normal,
+                                        color = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f).padding(end = 8.dp),
+                                    )
+                                    Text(
+                                        when {
+                                            recognized -> "已识别 · 选择"
+                                            selectable -> "选择"
+                                            else -> "打开"
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = when {
+                                            recognized || selectable -> MaterialTheme.colorScheme.primary
+                                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
