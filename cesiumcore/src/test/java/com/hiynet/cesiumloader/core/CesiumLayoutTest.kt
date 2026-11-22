@@ -92,5 +92,20 @@ class CesiumLayoutTest {
             "com.feimo.jxpd.nearme.gamecenter",
             AndroidPaths.gamePackageForPath("/sdcard/Android/data/com.feimo.jxpd.nearme.gamecenter/files/CesiumLoader"),
         )
+        assertTrue(AndroidPaths.isValidPackageName("com.custom.channel.game"))
+        assertTrue(AndroidPaths.isValidPackageName("com.jxpd.feimo.m4399"))
+        assertFalse(AndroidPaths.isValidPackageName("com.hiynet.aspatoys"))
+        assertFalse(AndroidPaths.isValidPackageName("com.feimo.astralparty../escape"))
+        assertFalse(AndroidPaths.isValidPackageName("single"))
+        assertFalse(AndroidPaths.isValidPackageName("com.example."))
+        assertFalse(AndroidPaths.isValidPackageName(null))
+        assertEquals(
+            File("/sdcard/Android/data/com.custom.channel.game/files/CesiumLoader"),
+            AndroidPaths.gameLoaderDir("com.custom.channel.game"),
+        )
+        assertEquals(
+            "com.custom.channel.game",
+            AndroidPaths.gamePackageForPath("/storage/emulated/0/Android/data/com.custom.channel.game/files/CesiumLoader"),
+        )
     }
 }

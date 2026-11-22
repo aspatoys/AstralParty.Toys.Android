@@ -310,6 +310,27 @@ class ManagedLoaderUpdateTest {
         try { installer.install(root, protected); fail("protected mod deployed") } catch (_: Exception) { }
     }
 
+    @Test fun `prepare without expectedVersion imports release zip and records local-import source`() = withTemp { dir ->
+        val fs = MemoryFs()
+        fs.files["$root/sdk/CesiumLoader.SDK.dll"] = text("old-sdk")
+        fs.files["$root/mods/FontMod/config.json"] = text("user-config")
+        fs.files["$root/mods/SpeedHackMod/SpeedHackMod.dll"] = text("android-speed")
+
+        val installer = ManagedLoaderUpdate(fs)
+        val pkg = installer.prepare(zip(dir, payload, version = "3.8.10", name = "cesium-loader-3.8.10.zip"), expectedVersion = null, staging = File(dir, "stage"))
+        assertEquals("3.8.10", pkg.version)
+        assertEquals(listOf("FontMod", "PvePanelMod"), pkg.mods)
+
+        installer.install(root, pkg, source = "local-import")
+        assertEquals("sdk", fs.files["$root/sdk/CesiumLoader.SDK.dll"]!!.toString(Charsets.UTF_8))
+        assertEquals("font-dll", fs.files["$root/mods/FontMod/FontMod.dll"]!!.toString(Charsets.UTF_8))
+        assertEquals("user-config", fs.files["$root/mods/FontMod/config.json"]!!.toString(Charsets.UTF_8))
+        assertEquals("android-speed", fs.files["$root/mods/SpeedHackMod/SpeedHackMod.dll"]!!.toString(Charsets.UTF_8))
+        val index = fs.files["$root/installed.json"]!!.toString(Charsets.UTF_8)
+        assertTrue(index.contains("\"3.8.10\""))
+        assertTrue(index.contains("\"local-import\""))
+    }
+
     private fun withTemp(block: (File) -> Unit) {
         val dir = java.nio.file.Files.createTempDirectory("managed").toFile()
         try { block(dir) } finally { dir.deleteRecursively() }

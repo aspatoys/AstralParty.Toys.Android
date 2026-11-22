@@ -1,21 +1,27 @@
 package com.hiynet.aspatoys.ui.loader
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import com.hiynet.aspatoys.ui.theme.ToysPageHeading
 import com.hiynet.aspatoys.ui.theme.ToysSection
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -30,6 +36,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import com.hiynet.aspatoys.ui.theme.toysPanel
@@ -40,6 +47,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
@@ -54,6 +62,7 @@ import com.hiynet.aspatoys.installer.RootShell
 import com.hiynet.aspatoys.installer.ShizukuShell
 import com.hiynet.aspatoys.ui.components.SkeletonLine
 import com.hiynet.aspatoys.ui.mods.ModsController
+import com.hiynet.cesiumloader.core.AndroidPaths
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -86,6 +95,7 @@ fun LoaderScreen(
     val installer = remember(gamePackage) { LoaderInstaller(context.applicationContext, gamePackage) }
     var gamePackages by remember { mutableStateOf(emptyList<String>()) }
     var showGamePackages by remember { mutableStateOf(false) }
+    var showPackagePicker by remember { mutableStateOf(false) }
     var forceChannelCompatibility by remember { mutableStateOf(settings.forceChannelCompatibility) }
     var pendingAction by remember { mutableStateOf<String?>(null) }
     val permissionVersion = ShizukuShell.permissionVersion
@@ -129,6 +139,16 @@ fun LoaderScreen(
                 if (auto != null && !operationBusy) {
                     selectGame(auto)
                 }
+            }
+        }
+    }
+
+    val pickReleaseZip = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            updates.importLoader(uri) {
+                refresh()
+                onLoaderChanged()
+                mods.reloadWorkspace()
             }
         }
     }
@@ -196,10 +216,19 @@ fun LoaderScreen(
         }
 
         ToysSection("游戏资源") {
-            OutlinedButton(
-                onClick = { showGamePackages = true },
-                enabled = !operationBusy && gamePackages.any { it != gamePackage },
-            ) { Text(gamePackage) }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = { showGamePackages = true },
+                    enabled = !operationBusy && gamePackages.any { it != gamePackage },
+                ) { Text(gamePackage) }
+                OutlinedButton(
+                    onClick = { showPackagePicker = true },
+                    enabled = !operationBusy,
+                ) { Text("选择包体") }
+            }
             DropdownMenu(expanded = showGamePackages, onDismissRequest = { showGamePackages = false }) {
                 gamePackages.forEach { candidate ->
                     DropdownMenuItem(text = { Text(candidate) }, onClick = {
@@ -223,13 +252,18 @@ fun LoaderScreen(
 
         LoaderUpdateCard(
             enabled = !busy,
-            onUpdated = { refresh(); onLoaderChanged() },
+            onUpdated = { refresh(); onLoaderChanged(); mods.reloadWorkspace() },
         ) {
             Text("操作前请完全退出游戏。禁用会保留文件；卸载会删除模组、配置和预设。",
                 style = MaterialTheme.typography.bodySmall)
             Button(modifier = Modifier.fillMaxWidth(),
                 enabled = !operationBusy && status?.shizukuGranted == true,
                 onClick = { pendingAction = "安装内置加载器" }) { Text("安装内置加载器") }
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !operationBusy && status?.shizukuGranted == true,
+                onClick = { pickReleaseZip.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
+            ) { Text("导入发布包") }
             val canToggle = status?.let { it.supportedVersion && it.loaderPayload } == true
             val toggleLabel = if (status?.injected == true) "禁用加载器" else "启用加载器"
             OutlinedButton(modifier = Modifier.fillMaxWidth(),
@@ -358,7 +392,149 @@ fun LoaderScreen(
             }) { Text(if (action == "卸载加载器") "永久卸载" else "已退出游戏，继续") } },
             dismissButton = { TextButton(onClick = { pendingAction = null }) { Text("取消") } })
     }
+    if (showPackagePicker) {
+        PackagePickerDialog(
+            currentPackage = gamePackage,
+            canScanPackages = status?.shizukuGranted == true,
+            onSelect = { selected ->
+                showPackagePicker = false
+                selectGame(selected)
+            },
+            onDismiss = { showPackagePicker = false },
+        )
+    }
 
+}
+
+@Composable
+private fun PackagePickerDialog(
+    currentPackage: String,
+    canScanPackages: Boolean,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var query by remember { mutableStateOf("") }
+    var loading by remember { mutableStateOf(canScanPackages) }
+    var packages by remember { mutableStateOf<List<String>>(emptyList()) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(canScanPackages) {
+        if (!canScanPackages) {
+            loading = false
+            return@LaunchedEffect
+        }
+        loading = true
+        loadError = null
+        val result = withContext(Dispatchers.IO) {
+            runCatching { LoaderInstaller.installedThirdPartyPackages() }
+        }
+        packages = result.getOrDefault(emptyList())
+        loadError = result.exceptionOrNull()?.message
+        loading = false
+    }
+
+    val trimmed = query.trim()
+    val filtered = remember(packages, trimmed) {
+        if (trimmed.isEmpty()) packages
+        else packages.filter { it.contains(trimmed, ignoreCase = true) }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("选择游戏包体") },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    label = { Text("搜索已安装应用或输入包名") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (loading) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Text("正在读取已安装应用…", style = MaterialTheme.typography.bodySmall)
+                    }
+                } else if (loadError != null) {
+                    Text(
+                        "读取应用列表失败：$loadError",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                } else if (!canScanPackages) {
+                    Text(
+                        "未连接 Shizuku / Root，可直接手动输入包名使用。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else if (filtered.isEmpty()) {
+                    Text(
+                        "没有匹配的已安装应用，可在上方直接输入完整包名。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 260.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        filtered.forEach { pkg ->
+                            val selected = pkg == currentPackage
+                            val recognized = AndroidPaths.isGamePackage(pkg)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(
+                                        if (selected) MaterialTheme.colorScheme.secondaryContainer
+                                        else MaterialTheme.colorScheme.surfaceContainerLow,
+                                    )
+                                    .clickable { onSelect(pkg) }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    pkg,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                                )
+                                if (recognized) {
+                                    Text(
+                                        "已识别",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = AndroidPaths.isValidPackageName(trimmed),
+                onClick = { onSelect(trimmed) },
+            ) { Text("使用输入包名") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        },
+    )
 }
 
 /**
