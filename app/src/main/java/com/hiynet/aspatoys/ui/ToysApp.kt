@@ -75,6 +75,8 @@ import com.hiynet.aspatoys.ui.customize.CardCustomizationScreen
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.hiynet.aspatoys.ui.settings.SettingsScreen
+import com.hiynet.aspatoys.ui.components.OperationHost
+import com.hiynet.aspatoys.ui.components.ToysSnackbarHost
 import com.hiynet.aspatoys.ui.theme.ToysBackdrop
 import com.hiynet.aspatoys.ui.theme.ToysMotion
 import com.hiynet.aspatoys.ui.theme.toysPressFeedback
@@ -158,9 +160,11 @@ fun ToysApp() {
                                 cards = cards,
                                     container = container,
                                     onOpenSettings = { destination = Destination.SETTINGS },
+                                    onOpenLoader = { destination = Destination.LOADER },
                                     modifier = if (destination == Destination.MARKET) Modifier.fillMaxSize()
                                         else Modifier.widthIn(max = 980.dp).fillMaxHeight(),
                                 )
+                                ToysSnackbarHost(Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
                             }
                         }
                     } else {
@@ -171,6 +175,7 @@ fun ToysApp() {
                             bottomBar = {
                                 ToysDock(destination = destination, onSelect = { destination = it })
                             },
+                            snackbarHost = { ToysSnackbarHost() },
                         ) { innerPadding ->
                             DestinationContent(
                                 destination = destination,
@@ -179,11 +184,16 @@ fun ToysApp() {
                                 cards = cards,
                                 container = container,
                                 onOpenSettings = { destination = Destination.SETTINGS },
+                                    onOpenLoader = { destination = Destination.LOADER },
                                 modifier = Modifier.fillMaxSize().padding(innerPadding),
                             )
                         }
                     }
                 }
+                // 多步骤操作的进度面板：放在外壳最外层，切页签不会丢。
+                // 收起后的胶囊在竖屏要让开悬浮导航栏（约 84dp 高），横屏贴着底边。
+                val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+                OperationHost(pillBottomPadding = if (landscape) 16.dp else 96.dp)
             }
         }
     }
@@ -197,6 +207,7 @@ private fun DestinationContent(
     container: AppContainer,
     onOpenSettings: () -> Unit,
     modifier: Modifier,
+    onOpenLoader: () -> Unit = {},
 ) {
     Box(modifier = modifier) {
         AnimatedContent(
@@ -216,7 +227,7 @@ private fun DestinationContent(
             label = "destination",
         ) { target ->
             when (target) {
-                Destination.MODS -> ModsScreen(controller = mods)
+                Destination.MODS -> ModsScreen(controller = mods, onOpenLoader = onOpenLoader)
 
                 Destination.MARKET -> MarketScreen(controller = market)
 

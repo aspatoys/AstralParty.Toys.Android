@@ -14,7 +14,8 @@ import com.hiynet.aspatoys.data.mods.ModIssue
 import com.hiynet.aspatoys.data.mods.ModPackageException
 import com.hiynet.aspatoys.data.settings.StorageAccess
 import com.hiynet.aspatoys.installer.ShizukuShell
-import com.hiynet.aspatoys.ui.components.Toasts
+import com.hiynet.aspatoys.ui.components.Operations
+import com.hiynet.aspatoys.ui.components.Snackbars
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -272,23 +273,26 @@ class ModsController(
     fun installCheckedPackage() {
         val file = checkedPackage ?: run { message = "先检查一个模组包，再安装"; return }
         if (installing) return
+        val name = report?.modName?.takeIf { it.isNotBlank() } ?: file.name
+        // 进度和结果画在全局进度面板里；检查报告等面板关掉再弹出，失败时可以在报告里重试。
+        val operation = Operations.start("安装「$name」") ?: return
+        operation.status("正在写入加载器…")
         installing = true
         scope.launch {
             try {
-                val result = withContext(Dispatchers.IO) { repo.install(file) }
+                val result = withContext(Dispatchers.IO) { repo.install(file) { line -> operation.log(line) } }
                 val where = if (result.disabled) "disabled_mods" else "mods"
-                Toasts.show(context, "${result.modId} 已装入 $where")
-                message = buildString {
+                operation.succeed(buildString {
                     append("已安装 ${result.modId} 到 $where：${result.files} 个文件")
                     if (result.removed > 0) append("，清理 ${result.removed} 个旧文件")
-                }
+                    append("。完全重启游戏后生效。")
+                })
                 checkedPackage = null
                 report = null
                 scanNow()
             } catch (failure: Exception) {
-                val text = "安装到加载器失败：${failure.message ?: failure::class.java.simpleName}"
-                message = text
-                Toasts.show(context, text)
+                val reason = (failure.message ?: failure::class.java.simpleName).trimEnd('。', '.', ' ')
+                operation.fail("安装到加载器失败：$reason。点「完成」后可以在检查报告里重试。")
             } finally {
                 installing = false
             }
@@ -314,17 +318,20 @@ class ModsController(
         scope.launch {
             try {
                 withContext(Dispatchers.IO) { repo.setEnabled(entry, enabled) }
-                Toasts.show(
-                    context,
+                Snackbars.show(
                     if (enabled) "${entry.shownName} 已启用" else "${entry.shownName} 已停用",
-                )
+                    actionLabel = "撤销",
+                ) {
+                    // 撤销时以最新扫描结果为准（目录可能已经搬过了）。
+                    installed.firstOrNull { it.name == entry.name }?.let { setEnabled(it, !enabled) }
+                }
                 // 搬完再扫一次：以磁盘为准，顺便把别的模组的变化一起收进来。
                 scanNow()
             } catch (failure: Exception) {
                 installed = before
                 val text = failure.message ?: failure::class.java.simpleName
                 message = "切换状态失败：$text"
-                Toasts.show(context, "切换失败：$text")
+                Snackbars.show("切换失败：$text")
             } finally {
                 busyModId = null
             }
@@ -398,19 +405,21 @@ class ModsController(
     /** 删除当前配置面板对应的模组；成功后关闭面板并重扫。 */
     fun deleteMod(entry: ModEntry) {
         if (deletingModId != null) return
+        // 确认过后进进度面板：日志原来收集了又丢掉，现在给用户看。
+        val operation = Operations.start("删除模组「${entry.shownName}」") ?: return
+        operation.status("正在删除模组文件…")
         deletingModId = entry.name
         scope.launch {
             try {
-                val logs = mutableListOf<String>()
                 withContext(Dispatchers.IO) {
-                    repo.deleteMod(entry) { line -> logs += line }
+                    repo.deleteMod(entry) { line -> operation.log(line) }
                 }
                 configTextJob?.cancel()
                 configEditor = null
                 scanNow()
-                message = "已删除 ${entry.shownName}"
+                operation.succeed("已删除 ${entry.shownName}。配置文件 configs/${entry.name}.json 保留着。")
             } catch (failure: Throwable) {
-                message = "删除失败：" + (failure.message ?: failure.toString())
+                operation.fail("删除失败：" + (failure.message ?: failure.toString()))
             } finally {
                 deletingModId = null
             }
@@ -491,11 +500,11 @@ class ModsController(
             try {
                 withContext(Dispatchers.IO) { repo.writeConfig(current.modId, current.text) }
                 configEditor = configEditor?.copy(saving = false, dirty = false, error = null)
-                Toasts.show(context, "${current.title} 配置已保存")
+                Snackbars.show("${current.title} 配置已保存")
             } catch (failure: Exception) {
                 val text = "保存失败：${failure.message ?: failure::class.java.simpleName}"
                 configEditor = configEditor?.copy(saving = false, error = text)
-                Toasts.show(context, text)
+                Snackbars.show(text)
             }
         }
     }

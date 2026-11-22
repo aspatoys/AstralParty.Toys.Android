@@ -28,9 +28,9 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -58,7 +58,9 @@ import com.hiynet.aspatoys.data.market.MarketModDetail
 import com.hiynet.aspatoys.data.market.MarketModVersion
 import com.hiynet.aspatoys.data.settings.AppSettings
 import com.hiynet.aspatoys.ui.components.CoverThumb
+import com.hiynet.aspatoys.ui.components.EmphasisButton
 import com.hiynet.aspatoys.ui.components.MessageBanner
+import com.hiynet.aspatoys.ui.components.Operations
 import com.hiynet.aspatoys.ui.components.PackageReportContent
 import com.hiynet.aspatoys.ui.components.Pill
 import com.hiynet.aspatoys.ui.components.SkeletonDetail
@@ -212,41 +214,9 @@ fun MarketScreen(
             }
         }
 
-        controller.download?.let { state ->
-            AlertDialog(
-                onDismissRequest = { /* 下载中不允许点外部关闭 */ },
-                title = { Text(state.modName) },
-                text = {
-                    Column {
-                        Text("${state.phaseText}  v${state.version}")
-                        Spacer(Modifier.height(12.dp))
-                        val fraction = state.fraction
-                        if (fraction != null) {
-                            LinearProgressIndicator(
-                                progress = { fraction },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        } else {
-                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            Formats.progressText(state.received, state.total, state.percent),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
-                confirmButton = {
-                    if (state.cancellable) {
-                        TextButton(onClick = controller::cancelDownload) { Text("取消") }
-                    }
-                },
-            )
-        }
-
+        // 下载 / 安装进度画在全局进度面板（Operations）里；检查报告等面板关掉再弹，免得两层叠在一起。
         val report = controller.report
-        if (showReport && report != null) {
+        if (showReport && report != null && Operations.current == null) {
             Dialog(
                 onDismissRequest = {
                     showReport = false
@@ -332,7 +302,7 @@ private fun MarketSearchBar(controller: MarketController) {
             placeholder = { Text("搜索模组名称或作者") },
             modifier = Modifier.weight(1f),
         )
-        Button(onClick = controller::submitSearch) { Text("搜索") }
+        FilledTonalButton(onClick = controller::submitSearch) { Text("搜索") }
     }
 }
 
@@ -621,7 +591,10 @@ private fun VersionRow(
             }
         }
         Spacer(Modifier.width(8.dp))
-        Button(onClick = onDownload, enabled = !downloading) { Text(if (isLatest) "下载并安装" else "安装此版本") }
+        // 详情里只有最新版是主按钮；旧版本退成线框，一屏不再并排一串实心按钮。
+        EmphasisButton(primary = isLatest, onClick = onDownload, enabled = !downloading) {
+            Text(if (isLatest) "下载并安装" else "安装此版本")
+        }
     }
 }
 

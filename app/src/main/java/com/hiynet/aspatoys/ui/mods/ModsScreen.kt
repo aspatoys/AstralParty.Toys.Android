@@ -15,7 +15,10 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -66,7 +69,9 @@ import androidx.compose.ui.unit.dp
 import com.hiynet.aspatoys.R
 import com.hiynet.aspatoys.data.mods.ModEntry
 import com.hiynet.aspatoys.data.mods.ModIssue
+import com.hiynet.aspatoys.ui.components.EmphasisButton
 import com.hiynet.aspatoys.ui.components.MessageBanner
+import com.hiynet.aspatoys.ui.components.Operations
 import com.hiynet.aspatoys.ui.components.PackageReportContent
 import com.hiynet.aspatoys.ui.components.Pill
 import com.hiynet.aspatoys.ui.components.SkeletonList
@@ -87,6 +92,7 @@ import com.hiynet.aspatoys.ui.theme.toysPressFeedback
 fun ModsScreen(
     controller: ModsController,
     modifier: Modifier = Modifier,
+    onOpenLoader: () -> Unit = {},
 ) {
     var showReport by remember { mutableStateOf(false) }
     LaunchedEffect(controller.report) { showReport = controller.report != null }
@@ -177,7 +183,25 @@ fun ModsScreen(
                     }
                 }
 
-                if (controller.scanError != null) {
+                // 准备清单：每一步只看最近一次扫描的真实结果。还没扫过（scanMode 为空）时先不显示，免得闪一下。
+                val scanned = controller.scanMode.isNotBlank()
+                val authorized = scanned && !controller.scanMode.startsWith("直读")
+                val loaderInstalled = controller.installedSdkVersion != null
+                val ready = authorized && loaderInstalled
+                if (scanned && !ready) {
+                    item {
+                        ReadinessCard(
+                            authorized = authorized,
+                            loaderInstalled = loaderInstalled,
+                            // 没授权时，扫描失败的原因就是「为什么没授权」，写进第一步里，不再单独弹一条红色横幅。
+                            authorizeDetail = if (!authorized) controller.scanError else null,
+                            onOpenLoader = onOpenLoader,
+                            modifier = Modifier.animateContentSize(),
+                        )
+                    }
+                }
+
+                if (controller.scanError != null && authorized) {
                     item {
                         MessageBanner(
                             text = controller.scanError!!,
@@ -188,7 +212,11 @@ fun ModsScreen(
                     }
                 }
 
-                if (!controller.allFilesAccess) {
+                // 「所有文件访问权限」只是没有 Shizuku / Root 时的退路，而且读不了 Android/data 里的默认目录；
+                // 只有加载器目录被改到了别处、又没授权时，它才真的有用。
+                if (scanned && !authorized && !controller.allFilesAccess &&
+                    !controller.loaderRootPath.contains("/Android/data/")
+                ) {
                     item { StorageAccessCard(controller) }
                 }
 
@@ -215,7 +243,9 @@ fun ModsScreen(
                 }
 
                 item {
-                    Button(
+                    // 每页只有一个主按钮：准备清单没走完时，清单里那一步才是主按钮，这里退成线框。
+                    EmphasisButton(
+                        primary = ready,
                         modifier = Modifier.fillMaxWidth().height(48.dp),
                         shape = RoundedCornerShape(14.dp),
                         onClick = { pickZip.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
@@ -276,8 +306,9 @@ fun ModsScreen(
         )
     }
 
+    // 安装进度画在全局进度面板（Operations）里；检查报告等面板关掉再弹出，免得两层叠在一起。
     val report = controller.report
-    if (showReport && report != null) {
+    if (showReport && report != null && Operations.current == null) {
         ModalBottomSheet(
             onDismissRequest = {
                 showReport = false
@@ -312,7 +343,106 @@ fun ModsScreen(
     }
 }
 
-/** 没有「所有文件访问权限」时的提示：加载器目录在游戏私有目录里，读写必须经 Shizuku。 */
+/**
+ * 开始前的准备清单，照 Win 版概览页的首次引导：按顺序列出还差哪一步，只有当前这一步带按钮（也是这一页的主按钮）。
+ * 两步的位置都在加载器页，按钮直接带过去。
+ */
+@Composable
+private fun ReadinessCard(
+    authorized: Boolean,
+    loaderInstalled: Boolean,
+    authorizeDetail: String?,
+    onOpenLoader: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)), RoundedCornerShape(18.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Text("开始前还差几步", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        ReadinessStep(
+            number = 1,
+            title = "授权 Shizuku 或 Root",
+            detail = authorizeDetail ?: "读写游戏里的加载器目录需要提权。",
+            done = authorized,
+            current = !authorized,
+            actionLabel = "去加载器页授权",
+            onAction = onOpenLoader,
+        )
+        ReadinessStep(
+            number = 2,
+            title = "安装加载器",
+            detail = if (authorized) "在加载器页安装内置加载器，或导入发布包。" else "授权之后才能检测和安装。",
+            done = loaderInstalled,
+            current = authorized && !loaderInstalled,
+            actionLabel = "去加载器页安装",
+            onAction = onOpenLoader,
+        )
+    }
+}
+
+@Composable
+private fun ReadinessStep(
+    number: Int,
+    title: String,
+    detail: String,
+    done: Boolean,
+    current: Boolean,
+    actionLabel: String,
+    onAction: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(
+            modifier = Modifier
+                .size(26.dp)
+                .clip(CircleShape)
+                .background(
+                    when {
+                        done -> scheme.primary
+                        current -> scheme.primaryContainer
+                        else -> scheme.surfaceVariant
+                    }
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                if (done) "✓" else number.toString(),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = when {
+                    done -> scheme.onPrimary
+                    current -> scheme.onPrimaryContainer
+                    else -> scheme.onSurfaceVariant
+                },
+            )
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = if (done || current) scheme.onSurface else scheme.onSurfaceVariant,
+            )
+            if (!done) {
+                Text(detail, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+            }
+            if (current) {
+                Button(onClick = onAction, modifier = Modifier.padding(top = 4.dp)) { Text(actionLabel) }
+            }
+        }
+    }
+}
+
+/**
+ * 加载器目录被改到了游戏私有目录以外、又没有 Shizuku / Root 时的提示：
+ * 这时只能直接按文件读写，需要「所有文件访问权限」。
+ */
 @Composable
 private fun StorageAccessCard(controller: ModsController) {
     Column(
@@ -330,8 +460,8 @@ private fun StorageAccessCard(controller: ModsController) {
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            "加载器目录在游戏的私有目录里，安卓只允许经 Shizuku 读写。没有这个权限时市场仍可浏览，" +
-                "但读不到已装模组、也写不进加载器目录。",
+            "加载器目录被改到了游戏私有目录以外。没有 Shizuku / Root 时，要有这个权限才能直接读写它；" +
+                "授权 Shizuku 或 Root 后就不需要了。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onErrorContainer,
         )

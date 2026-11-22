@@ -2,11 +2,7 @@ package com.hiynet.aspatoys.ui.loader
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,7 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
@@ -33,7 +28,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -63,20 +57,19 @@ import com.hiynet.aspatoys.installer.FolderPackageResolver
 import com.hiynet.aspatoys.installer.LoaderInstaller
 import com.hiynet.aspatoys.installer.RootShell
 import com.hiynet.aspatoys.installer.ShizukuShell
+import com.hiynet.aspatoys.ui.components.ConfirmDialog
+import com.hiynet.aspatoys.ui.components.EmphasisButton
+import com.hiynet.aspatoys.ui.components.Operations
 import com.hiynet.aspatoys.ui.components.SkeletonLine
+import com.hiynet.aspatoys.ui.components.Snackbars
 import com.hiynet.aspatoys.ui.mods.ModsController
 import com.hiynet.cesiumloader.core.AndroidPaths
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/**
- * 日志保留的行数上限。
- *
- * 日志是渲染在普通 `Column` 里的，安装一次可能打几百行；不设上限的话每追加一行都要重组
- * 全部已有行，页面会越用越卡，而且整页长度无限增长。
- */
-private const val MAX_LOG_LINES = 300
+/** 「导入发布包」也先走确认弹窗，确认后才打开文件选择。 */
+private const val ImportReleaseAction = "导入加载器发布包"
 
 /**
  * 加载器页：加载器目录的状态（原来在模组页顶部的「模组工作区」）+ 装 / 还原。
@@ -106,23 +99,18 @@ fun LoaderScreen(
 
     var status by remember(gamePackage) { mutableStateOf<LoaderInstaller.Status?>(null) }
     var busy by remember { mutableStateOf(false) }
-    var logs by remember { mutableStateOf<List<String>>(emptyList()) }
-
-    /** 追加一行日志；只保留最近 [MAX_LOG_LINES] 行。 */
-    fun appendLog(line: String) {
-        logs = (logs + line).takeLast(MAX_LOG_LINES)
-    }
     var mode by remember { mutableStateOf(settings.privilegeMode) }
     val operationBusy = busy || updates.loaderBusy
 
-    fun selectGame(next: String) {
+    /** [announce]：用户手动选的才提示一句；刷新时自动选中的不打扰。 */
+    fun selectGame(next: String, announce: Boolean = false) {
         settings.gamePackage = next
         gamePackage = next
         folderPickerError = null
-        logs = emptyList()
         onLoaderChanged()
         mods.reloadWorkspace()
         updates.refreshInstalled()
+        if (announce) Snackbars.show("已切换到 $next")
     }
 
     fun refresh() {
@@ -150,10 +138,12 @@ fun LoaderScreen(
 
     val pickReleaseZip = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            updates.importLoader(uri) {
-                refresh()
-                onLoaderChanged()
-                mods.reloadWorkspace()
+            Operations.runUpdateTask("导入加载器发布包") { listener ->
+                updates.importLoader(uri, listener) {
+                    refresh()
+                    onLoaderChanged()
+                    mods.reloadWorkspace()
+                }
             }
         }
     }
@@ -163,7 +153,7 @@ fun LoaderScreen(
             val selected = FolderPackageResolver.fromTreeUri(uri)
             showPackagePicker = false
             if (selected != null) {
-                selectGame(selected)
+                selectGame(selected, announce = true)
             } else {
                 folderPickerError = "所选文件夹不是 com. 开头的包名目录"
             }
@@ -172,19 +162,20 @@ fun LoaderScreen(
 
     fun run(action: String, block: ((String) -> Unit) -> LoaderInstaller.Status) {
         if (busy || updates.loaderBusy) return
+        // 进度和日志画在全局进度面板里，结束后面板留着，用户点「完成」才关。
+        val operation = Operations.start(action) ?: return
         busy = true
-        logs = emptyList()
         scope.launch {
             try {
                 val result = withContext(Dispatchers.IO) {
-                    block { line -> appendLog(line) }
+                    block { line -> operation.log(line) }
                 }
                 status = result
-                appendLog("—— $action 完成 ——")
+                operation.succeed("已完成。完全退出并重新启动游戏后生效。")
                 // 装/还原都会改动加载器目录，模组页下次进入要重扫。
                 onLoaderChanged()
             } catch (error: Throwable) {
-                appendLog("失败：" + (error.message ?: error.toString()))
+                operation.fail("没有完成：" + (error.message ?: error.toString()))
             } finally {
                 busy = false
                 refresh()
@@ -215,8 +206,11 @@ fun LoaderScreen(
                 },
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                // 每页一个主按钮：还没授权时，授权就是这一页最该点的。
+                val needsGrant = status != null && status?.shizukuGranted != true
                 if (ShizukuShell.selectedMode() == AppSettings.PrivilegeRoot) {
-                    OutlinedButton(
+                    EmphasisButton(
+                        primary = needsGrant,
                         onClick = {
                             RootShell.reset()
                             refresh()
@@ -224,7 +218,11 @@ fun LoaderScreen(
                         enabled = !operationBusy,
                     ) { Text("重新检测 Root") }
                 } else {
-                    OutlinedButton(onClick = { ShizukuShell.requestPermission() }, enabled = !operationBusy) {
+                    EmphasisButton(primary = needsGrant, onClick = {
+                        // 服务没运行时 requestPermission() 什么都不做，用户会以为按钮坏了。
+                        if (ShizukuShell.isServiceAlive()) ShizukuShell.requestPermission()
+                        else Snackbars.show("Shizuku 没在运行：先打开 Shizuku App 启动服务，再回来点「授权 Shizuku」。")
+                    }, enabled = !operationBusy) {
                         Text("授权 Shizuku")
                     }
                 }
@@ -260,7 +258,7 @@ fun LoaderScreen(
                 gamePackages.forEach { candidate ->
                     DropdownMenuItem(text = { Text(candidate) }, onClick = {
                         showGamePackages = false
-                        selectGame(candidate)
+                        selectGame(candidate, announce = true)
                     })
                 }
             }
@@ -283,13 +281,16 @@ fun LoaderScreen(
         ) {
             Text("操作前请完全退出游戏。禁用会保留文件；卸载会删除模组、配置和预设。",
                 style = MaterialTheme.typography.bodySmall)
-            Button(modifier = Modifier.fillMaxWidth(),
+            // 授权了、但还没装加载器时，安装才是主按钮；装好之后退成线框（重装 / 覆盖不是常用操作）。
+            EmphasisButton(primary = status?.shizukuGranted == true && status?.loaderPayload != true,
+                modifier = Modifier.fillMaxWidth(),
                 enabled = !operationBusy && status?.shizukuGranted == true,
                 onClick = { pendingAction = "安装内置加载器" }) { Text("安装内置加载器") }
             OutlinedButton(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !operationBusy && status?.shizukuGranted == true,
-                onClick = { pickReleaseZip.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
+                // 会覆盖 SDK 和官方模组，先确认再选文件。
+                onClick = { pendingAction = ImportReleaseAction },
             ) { Text("导入发布包") }
             val canToggle = status?.let { it.supportedVersion && it.loaderPayload } == true
             val toggleLabel = if (status?.injected == true) "禁用加载器" else "启用加载器"
@@ -299,12 +300,6 @@ fun LoaderScreen(
             OutlinedButton(modifier = Modifier.fillMaxWidth(),
                 enabled = !operationBusy && status?.hasBackup == true,
                 onClick = { pendingAction = "卸载加载器" }) { Text("卸载加载器") }
-            AnimatedVisibility(visible = busy, enter = fadeIn() + slideInVertically { -it / 3 }, exit = fadeOut()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CircularProgressIndicator(modifier = Modifier.padding(4.dp))
-                    Text("执行中…", style = MaterialTheme.typography.bodySmall)
-                }
-            }
         }
 
         Column(Modifier.fillMaxWidth().toysPanel().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -384,40 +379,58 @@ fun LoaderScreen(
         }
 
         WorkspaceCard(mods = mods, onOpenSettings = onOpenSettings)
-
-        AnimatedVisibility(visible = logs.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
-            Column {
-                HorizontalDivider()
-                Spacer(Modifier.height(8.dp))
-                SelectionContainer {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        logs.forEach { line ->
-                            Text(line, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
-                        }
-                    }
-                }
-            }
-        }
     }
     pendingAction?.let { action ->
-        AlertDialog(onDismissRequest = { pendingAction = null },
-            title = { Text("$action？") },
-            text = { Text(when (action) {
-                "卸载加载器" -> "将先恢复并校验游戏原包，再永久删除加载器、全部模组、配置、皮肤、预设、日志和安装备份。请先完全退出游戏。"
-                "禁用加载器" -> "暂停游戏内加载，保留所有模组、配置和预设。请先完全退出游戏；下次启动生效。"
-                "启用加载器" -> "恢复游戏内加载，继续使用现有加载器版本、模组和配置。请先完全退出游戏。"
-                else -> "安装 APK 内置版本；会覆盖 SDK 和内置模组，已有用户配置保留。请先完全退出游戏。"
-            } + "\n\n游戏：$gamePackage") },
-            confirmButton = { TextButton(enabled = !operationBusy, onClick = {
+        // 每条分别写：会做什么 / 什么会保留 / 能不能找回（照 Win 版确认弹窗的写法）。
+        val lines = when (action) {
+            "卸载加载器" -> listOf(
+                "先恢复并校验游戏原包，再永久删除加载器、全部模组、配置、皮肤、预设、日志和安装备份。",
+                "游戏本体保留，卸载后按原版运行。",
+                "删除的内容找不回来。只想暂时不用，可以改用「禁用加载器」，所有文件都会保留。",
+            )
+            "禁用加载器" -> listOf(
+                "暂停游戏内加载，下次启动游戏生效。",
+                "保留所有模组、配置和预设，随时可以重新启用。",
+            )
+            "启用加载器" -> listOf(
+                "恢复游戏内加载，继续使用现有加载器版本、模组和配置。",
+            )
+            ImportReleaseAction -> listOf(
+                "从手机里选一个 CesiumLoader 发布的 cesium-loader-*.zip，校验清单和 SHA-256 后安装。",
+                "会覆盖托管 SDK 和官方模组。",
+                "保留安卓悬浮窗、变速、自由相机和已有配置。",
+            )
+            else -> listOf(
+                "安装 APK 内置的加载器版本，会覆盖 SDK 和内置模组。",
+                "已有的用户配置保留。",
+            )
+        } + "请先完全退出游戏。"
+        ConfirmDialog(
+            title = "$action？",
+            lines = lines,
+            footnote = "游戏：$gamePackage",
+            confirmLabel = when (action) {
+                "卸载加载器" -> "永久卸载"
+                ImportReleaseAction -> "已退出游戏，选择发布包"
+                else -> "已退出游戏，继续"
+            },
+            danger = action == "卸载加载器",
+            onConfirm = {
                 pendingAction = null
+                if (operationBusy) return@ConfirmDialog
+                if (action == ImportReleaseAction) {
+                    pickReleaseZip.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+                    return@ConfirmDialog
+                }
                 run(action) { log -> when (action) {
                     "卸载加载器" -> installer.uninstall(log)
                     "禁用加载器" -> installer.setEnabled(false, log)
                     "启用加载器" -> installer.setEnabled(true, log)
                     else -> installer.install(log)
                 } }
-            }) { Text(if (action == "卸载加载器") "永久卸载" else "已退出游戏，继续") } },
-            dismissButton = { TextButton(onClick = { pendingAction = null }) { Text("取消") } })
+            },
+            onDismiss = { pendingAction = null },
+        )
     }
     if (showPackagePicker) {
         FolderPackagePickerDialog(
@@ -426,7 +439,7 @@ fun LoaderScreen(
             recognizedPackages = gamePackages.toSet(),
             onSelect = { selected ->
                 showPackagePicker = false
-                selectGame(selected)
+                selectGame(selected, announce = true)
             },
             onOpenSystemFolder = { pickPackageFolder.launch(null) },
             onDismiss = { showPackagePicker = false },

@@ -36,6 +36,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -67,7 +68,7 @@ import com.hiynet.aspatoys.data.settings.AppSettings
 import com.hiynet.aspatoys.data.settings.StorageAccess
 import com.hiynet.aspatoys.data.settings.ThemeMode
 import com.hiynet.aspatoys.ui.components.Pill
-import com.hiynet.aspatoys.ui.components.Toasts
+import com.hiynet.aspatoys.ui.components.Snackbars
 import com.hiynet.aspatoys.ui.theme.ToysMotion
 import com.hiynet.aspatoys.ui.theme.ToysPageHeading
 import com.hiynet.aspatoys.ui.theme.ToysSection
@@ -285,7 +286,7 @@ private fun SettingsDetailView(
             }
             context.startActivity(intent)
         } catch (_: Exception) {
-            Toasts.show(context, "无法打开浏览器，已复制链接到剪贴板")
+            Snackbars.show("无法打开浏览器，已复制链接到剪贴板")
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             clipboard?.setPrimaryClip(ClipData.newPlainText("URL", url))
         }
@@ -526,7 +527,7 @@ private fun SettingsDetailView(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Button(onClick = {
+                        FilledTonalButton(onClick = {
                             settings.loaderRootPath = loaderRootDraft
                             loaderRootDraft = settings.loaderRootPath
                             notice = "加载器根目录已保存。"
@@ -563,7 +564,7 @@ private fun SettingsDetailView(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Button(onClick = {
+                        FilledTonalButton(onClick = {
                             settings.downloadsPath = downloadsDraft
                             downloadsDraft = settings.downloadsPath
                             notice = "下载目录已保存。"
