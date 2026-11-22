@@ -110,15 +110,6 @@ fun LoaderScreen(
     }
     var mode by remember { mutableStateOf(settings.privilegeMode) }
     val operationBusy = busy || updates.loaderBusy
-    val pickReleaseZip = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            updates.importLoader(uri) {
-                refresh()
-                onLoaderChanged()
-                mods.reloadWorkspace()
-            }
-        }
-    }
 
     fun selectGame(next: String) {
         settings.gamePackage = next
@@ -148,6 +139,16 @@ fun LoaderScreen(
                 if (auto != null && !operationBusy) {
                     selectGame(auto)
                 }
+            }
+        }
+    }
+
+    val pickReleaseZip = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            updates.importLoader(uri) {
+                refresh()
+                onLoaderChanged()
+                mods.reloadWorkspace()
             }
         }
     }
