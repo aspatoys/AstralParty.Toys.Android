@@ -15,7 +15,8 @@ import com.hiynet.aspatoys.data.market.MarketModDetail
 import com.hiynet.aspatoys.data.market.MarketModSummary
 import com.hiynet.aspatoys.data.market.MarketModVersion
 import com.hiynet.aspatoys.data.market.PackageCheckReport
-import com.hiynet.aspatoys.ui.components.Toasts
+import com.hiynet.aspatoys.ui.components.Operations
+import com.hiynet.aspatoys.ui.format.Formats
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -299,6 +300,11 @@ class MarketController(
         if (download != null) return
         if (!requireConsent()) return
 
+        val modName = target.name.ifBlank { target.id }
+        val operation = Operations.start("安装「$modName」v${version.version}", onCancel = ::cancelDownload) ?: return
+        activeOperation = operation
+        operation.status("正在准备下载…")
+
         val handle = HttpCancellation()
         cancellation = handle
         report = null
@@ -327,43 +333,48 @@ class MarketController(
                 }
                 if (!result.success) {
                     // 检查没过就停在这里：报告会说明是哈希、结构还是 SDK 门槛的问题。
+                    // 报告弹窗在用户关掉进度面板之后出现。
                     report = result
-                    message = "检查没通过，已停在报告里，没有写入加载器。"
+                    operation.fail("检查没通过，没有写入加载器。点「完成」后可以查看检查报告。")
                     return@launch
                 }
-                installIntoLoader(result)
+                installIntoLoader(result, operation)
             } catch (cancelled: HttpCancelledException) {
-                message = "已取消下载。"
+                operation.cancelled("已取消下载，没有写入加载器。")
             } catch (failure: MarketException) {
-                message = failure.message
+                operation.fail(failure.message ?: "下载失败。")
             } catch (failure: Exception) {
-                message = "下载失败：${failure.message}"
+                operation.fail("下载失败：${failure.message}")
             } finally {
                 download = null
                 cancellation = null
+                activeOperation = null
             }
         }
     }
 
     /** 下载并检查通过之后，直接写进加载器（`mods/<ModId>/` 或 `disabled_mods/`）。 */
-    private suspend fun installIntoLoader(result: PackageCheckReport) {
+    private suspend fun installIntoLoader(result: PackageCheckReport, operation: Operations.Operation) {
         mainHandler.post { download = download?.copy(phase = DownloadState.Phase.INSTALL) }
+        // shell 命令发出去之后就不能中断了。
+        operation.allowCancel(false)
+        operation.status("正在写入加载器…")
         try {
             val installed = withContext(Dispatchers.IO) {
-                container.loader.install(java.io.File(result.filePath))
+                container.loader.install(java.io.File(result.filePath)) { line -> operation.log(line) }
             }
             val where = if (installed.disabled) "disabled_mods" else "mods"
             val text = "已安装 ${result.modName} v${result.registeredVersion}：${installed.files} 个文件 → $where"
-            message = if (installed.removed > 0) "$text（清理 ${installed.removed} 个旧文件）" else text
-            Toasts.show(container.context, "${result.modName} 已装入加载器")
+            val cleaned = if (installed.removed > 0) "（清理 ${installed.removed} 个旧文件）" else ""
+            operation.succeed("$text$cleaned。完全重启游戏后生效。")
             report = null
             refreshInstalledBadges()
         } catch (failure: Exception) {
-            // 已经下好了，别让它白下：把报告留给用户，并在报告里说清为什么没装进去。
+            // 已经下好了，别让它白下：把报告留给用户，关掉面板后可以在报告里重试写入。
             report = result
-            val text = "下载完成，但写入加载器失败：${failure.message ?: failure::class.java.simpleName}"
-            message = text
-            Toasts.show(container.context, text)
+            // 底层的错误文字自己可能带句号，去掉再接后半句，免得出现「。。」。
+            val reason = (failure.message ?: failure::class.java.simpleName).trimEnd('。', '.', ' ')
+            operation.fail("下载完成，但写入加载器失败：$reason。点「完成」后可以在检查报告里重试。")
         }
     }
 
@@ -371,6 +382,7 @@ class MarketController(
     fun installReport() {
         val target = report ?: return
         if (download != null || !target.success) return
+        val operation = Operations.start("安装「${target.modName}」v${target.registeredVersion}") ?: return
         lastProgressBucket = -1
         download = DownloadState(
             modId = target.modId,
@@ -383,7 +395,7 @@ class MarketController(
         )
         scope.launch {
             try {
-                installIntoLoader(target)
+                installIntoLoader(target, operation)
             } finally {
                 download = null
             }
@@ -417,11 +429,22 @@ class MarketController(
 
     private var lastProgressBucket = -1
 
+    /** 当前下载对应的进度面板；回调在 IO 线程上，经它把进度送到面板。 */
+    @Volatile
+    private var activeOperation: Operations.Operation? = null
+
     private fun onProgress(progress: DownloadProgress) {
         // 每 128 KB 都回推太吵：百分比（或 256 KB 桶）变了才更新一次界面。
         val bucket = progress.percent ?: ((progress.receivedBytes / (256 * 1024)).toInt())
         if (bucket == lastProgressBucket) return
         lastProgressBucket = bucket
+        activeOperation?.let { operation ->
+            operation.status("正在下载…")
+            operation.progress(
+                progress.percent?.let { it / 100f },
+                Formats.progressText(progress.receivedBytes, progress.totalBytes, progress.percent),
+            )
+        }
         mainHandler.post {
             download = download?.copy(
                 phase = DownloadState.Phase.DOWNLOAD,
@@ -438,6 +461,9 @@ class MarketController(
             "inspect" -> DownloadState.Phase.INSPECT
             else -> return
         }
+        activeOperation?.status(
+            if (mapped == DownloadState.Phase.VERIFY) "正在校验 SHA-256…" else "正在检查压缩包…"
+        )
         mainHandler.post { download = download?.copy(phase = mapped) }
     }
 

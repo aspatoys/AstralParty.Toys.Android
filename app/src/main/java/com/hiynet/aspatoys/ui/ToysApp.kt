@@ -75,6 +75,7 @@ import com.hiynet.aspatoys.ui.customize.CardCustomizationScreen
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.hiynet.aspatoys.ui.settings.SettingsScreen
+import com.hiynet.aspatoys.ui.components.OperationHost
 import com.hiynet.aspatoys.ui.theme.ToysBackdrop
 import com.hiynet.aspatoys.ui.theme.ToysMotion
 import com.hiynet.aspatoys.ui.theme.toysPressFeedback
@@ -184,6 +185,8 @@ fun ToysApp() {
                         }
                     }
                 }
+                // 多步骤操作的进度面板：放在外壳最外层，切页签不会丢。
+                OperationHost()
             }
         }
     }

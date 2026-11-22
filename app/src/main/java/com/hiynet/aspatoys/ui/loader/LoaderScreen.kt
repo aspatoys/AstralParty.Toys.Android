@@ -2,11 +2,7 @@ package com.hiynet.aspatoys.ui.loader
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,7 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
@@ -33,7 +28,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -63,20 +57,13 @@ import com.hiynet.aspatoys.installer.FolderPackageResolver
 import com.hiynet.aspatoys.installer.LoaderInstaller
 import com.hiynet.aspatoys.installer.RootShell
 import com.hiynet.aspatoys.installer.ShizukuShell
+import com.hiynet.aspatoys.ui.components.Operations
 import com.hiynet.aspatoys.ui.components.SkeletonLine
 import com.hiynet.aspatoys.ui.mods.ModsController
 import com.hiynet.cesiumloader.core.AndroidPaths
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-/**
- * 日志保留的行数上限。
- *
- * 日志是渲染在普通 `Column` 里的，安装一次可能打几百行；不设上限的话每追加一行都要重组
- * 全部已有行，页面会越用越卡，而且整页长度无限增长。
- */
-private const val MAX_LOG_LINES = 300
 
 /**
  * 加载器页：加载器目录的状态（原来在模组页顶部的「模组工作区」）+ 装 / 还原。
@@ -106,12 +93,6 @@ fun LoaderScreen(
 
     var status by remember(gamePackage) { mutableStateOf<LoaderInstaller.Status?>(null) }
     var busy by remember { mutableStateOf(false) }
-    var logs by remember { mutableStateOf<List<String>>(emptyList()) }
-
-    /** 追加一行日志；只保留最近 [MAX_LOG_LINES] 行。 */
-    fun appendLog(line: String) {
-        logs = (logs + line).takeLast(MAX_LOG_LINES)
-    }
     var mode by remember { mutableStateOf(settings.privilegeMode) }
     val operationBusy = busy || updates.loaderBusy
 
@@ -119,7 +100,6 @@ fun LoaderScreen(
         settings.gamePackage = next
         gamePackage = next
         folderPickerError = null
-        logs = emptyList()
         onLoaderChanged()
         mods.reloadWorkspace()
         updates.refreshInstalled()
@@ -172,19 +152,20 @@ fun LoaderScreen(
 
     fun run(action: String, block: ((String) -> Unit) -> LoaderInstaller.Status) {
         if (busy || updates.loaderBusy) return
+        // 进度和日志画在全局进度面板里，结束后面板留着，用户点「完成」才关。
+        val operation = Operations.start(action) ?: return
         busy = true
-        logs = emptyList()
         scope.launch {
             try {
                 val result = withContext(Dispatchers.IO) {
-                    block { line -> appendLog(line) }
+                    block { line -> operation.log(line) }
                 }
                 status = result
-                appendLog("—— $action 完成 ——")
+                operation.succeed("已完成。完全退出并重新启动游戏后生效。")
                 // 装/还原都会改动加载器目录，模组页下次进入要重扫。
                 onLoaderChanged()
             } catch (error: Throwable) {
-                appendLog("失败：" + (error.message ?: error.toString()))
+                operation.fail("没有完成：" + (error.message ?: error.toString()))
             } finally {
                 busy = false
                 refresh()
@@ -299,12 +280,6 @@ fun LoaderScreen(
             OutlinedButton(modifier = Modifier.fillMaxWidth(),
                 enabled = !operationBusy && status?.hasBackup == true,
                 onClick = { pendingAction = "卸载加载器" }) { Text("卸载加载器") }
-            AnimatedVisibility(visible = busy, enter = fadeIn() + slideInVertically { -it / 3 }, exit = fadeOut()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CircularProgressIndicator(modifier = Modifier.padding(4.dp))
-                    Text("执行中…", style = MaterialTheme.typography.bodySmall)
-                }
-            }
         }
 
         Column(Modifier.fillMaxWidth().toysPanel().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -384,20 +359,6 @@ fun LoaderScreen(
         }
 
         WorkspaceCard(mods = mods, onOpenSettings = onOpenSettings)
-
-        AnimatedVisibility(visible = logs.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
-            Column {
-                HorizontalDivider()
-                Spacer(Modifier.height(8.dp))
-                SelectionContainer {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        logs.forEach { line ->
-                            Text(line, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
-                        }
-                    }
-                }
-            }
-        }
     }
     pendingAction?.let { action ->
         AlertDialog(onDismissRequest = { pendingAction = null },
