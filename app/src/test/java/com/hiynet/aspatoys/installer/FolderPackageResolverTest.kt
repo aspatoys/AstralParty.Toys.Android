@@ -88,6 +88,16 @@ class FolderPackageResolverTest {
                 "content://com.android.externalstorage.documents/tree/primary%3ADownload%2Forg.example",
             ),
         )
+        assertNull(
+            FolderPackageResolver.fromTreeUriString(
+                "content://com.android.externalstorage.documents/root/primary",
+            ),
+        )
+        assertNull(
+            FolderPackageResolver.fromTreeUriString(
+                "content://com.android.externalstorage.documents",
+            ),
+        )
     }
 
     @Test

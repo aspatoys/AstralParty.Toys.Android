@@ -36,14 +36,24 @@ object FolderPackageResolver {
     fun fromTreeUriString(uriString: String?): String? {
         if (uriString.isNullOrBlank()) return null
         val cleaned = uriString.substringBefore('?').substringBefore('#')
+        val pathOnly = if ("://" in cleaned) {
+            val afterScheme = cleaned.substringAfter("://")
+            val firstSlash = afterScheme.indexOf('/')
+            if (firstSlash < 0) return null
+            afterScheme.substring(firstSlash)
+        } else {
+            cleaned
+        }
         val candidateSegments = buildList {
-            if ("/document/" in cleaned) {
-                add(cleaned.substringAfter("/document/").removeSuffix("/children"))
+            if ("/document/" in pathOnly) {
+                add(pathOnly.substringAfter("/document/").removeSuffix("/children"))
             }
-            if ("/tree/" in cleaned) {
-                add(cleaned.substringAfter("/tree/").substringBefore("/document/").removeSuffix("/children"))
+            if ("/tree/" in pathOnly) {
+                add(pathOnly.substringAfter("/tree/").substringBefore("/document/").removeSuffix("/children"))
             }
-            add(cleaned)
+            if (isEmpty()) {
+                add(pathOnly)
+            }
         }
         for (raw in candidateSegments) {
             val decoded = decodePercent(raw)
