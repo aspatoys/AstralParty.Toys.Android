@@ -18,7 +18,7 @@ public static partial class AssemblyPatch
     [SupportedOSPlatform("browser")]
     public static byte[] Patch(byte[] input, string packageName, bool reference)
     {
-        if (!Regex.IsMatch(packageName, @"\Acom\.feimo\.(?:astralparty|jxpd)(?:\.[A-Za-z0-9_]+)*\z") ||
+        if (!Regex.IsMatch(packageName, @"\A(?:com\.feimo\.(?:astralparty|jxpd)|com\.(?:astralparty|jxpd)(?:\.feimo)?|com\.tencent\.tmgp\.(?:feimo\.)?(?:astralparty|jxpd))(?:\.[A-Za-z0-9_]+)*\z") ||
             packageName.Contains("jpn", StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("不支持的游戏包名。");
         var loaderRoot = $"/sdcard/Android/data/{packageName}/files/CesiumLoader";

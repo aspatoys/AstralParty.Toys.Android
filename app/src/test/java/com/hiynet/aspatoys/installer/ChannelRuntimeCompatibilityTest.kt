@@ -101,9 +101,42 @@ class ChannelRuntimeCompatibilityTest {
             AndroidPaths.gameLoaderDir("com.feimo.astralparty.bilibili").path.replace('\\', '/'))
         assertEquals("/sdcard/Android/data/com.feimo.astralparty.nearme.gamecenter/files/CesiumLoader",
             AndroidPaths.gameLoaderDir("com.feimo.astralparty.nearme.gamecenter").path.replace('\\', '/'))
+        assertEquals("/sdcard/Android/data/com.jxpd.feimo.m4399/files/CesiumLoader",
+            AndroidPaths.gameLoaderDir("com.jxpd.feimo.m4399").path.replace('\\', '/'))
         assertFalse(AndroidPaths.isGamePackage("com.feimo.astralparty."))
         assertFalse(AndroidPaths.isGamePackage("com.feimo.astralparty../other"))
         assertFalse(AndroidPaths.isGamePackage("com.feimo.astralparty.jpn"))
+    }
+
+    @Test
+    fun installedGamePackagesFindsReversedJxpdFeimoAndChannelPackages() {
+        val pmOutput = """
+            package:com.android.settings
+            package:com.hiynet.aspatoys
+            package:com.jxpd.feimo.m4399
+            package:com.feimo.astralparty.bilibili
+            package:com.feimo.astralparty.jpn
+            package:com.tencent.tmgp.jxpd
+        """.trimIndent()
+        val found = LoaderInstaller.installedGamePackages { cmd ->
+            if (cmd == "pm list packages --user current") pmOutput else error("unexpected cmd: $cmd")
+        }
+        assertEquals(
+            listOf("com.feimo.astralparty.bilibili", "com.jxpd.feimo.m4399", "com.tencent.tmgp.jxpd"),
+            found,
+        )
+    }
+
+    @Test
+    fun installedGamePackagesFallsBackWhenCurrentUserFlagFails() {
+        val found = LoaderInstaller.installedGamePackages { cmd ->
+            when (cmd) {
+                "pm list packages --user current" -> error("unknown option --user")
+                "pm list packages" -> "package:com.jxpd.feimo.m4399\npackage:com.android.systemui\n"
+                else -> error("unexpected cmd: $cmd")
+            }
+        }
+        assertEquals(listOf("com.jxpd.feimo.m4399"), found)
     }
 
     @Test

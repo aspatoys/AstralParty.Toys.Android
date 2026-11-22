@@ -70,13 +70,23 @@ class CesiumLayoutTest {
         assertTrue(AndroidPaths.isGamePackage("com.feimo.jxpd"))
         assertTrue(AndroidPaths.isGamePackage("com.feimo.jxpd.bilibili"))
         assertTrue(AndroidPaths.isGamePackage("com.feimo.jxpd.vivo"))
+        assertTrue(AndroidPaths.isGamePackage("com.jxpd.feimo.m4399"))
+        assertTrue(AndroidPaths.isGamePackage("com.jxpd.feimo"))
+        assertTrue(AndroidPaths.isGamePackage("com.astralparty.feimo.m4399"))
+        assertTrue(AndroidPaths.isGamePackage("com.tencent.tmgp.jxpd"))
+        assertTrue(AndroidPaths.isGamePackage("com.tencent.tmgp.astralparty"))
         assertFalse(AndroidPaths.isGamePackage("com.feimo.astralpartyfoo"))
         assertFalse(AndroidPaths.isGamePackage("com.feimo.astralparty.jpn"))
+        assertFalse(AndroidPaths.isGamePackage("com.jxpd.feimo.jpn"))
         assertFalse(AndroidPaths.isGamePackage("com.hiynet.aspatoys"))
         assertFalse(AndroidPaths.isGamePackage(null))
         assertEquals(
             "com.feimo.astralparty.bilibili",
             AndroidPaths.gamePackageForPath("/storage/emulated/0/Android/data/com.feimo.astralparty.bilibili/files/CesiumLoader/mods"),
+        )
+        assertEquals(
+            "com.jxpd.feimo.m4399",
+            AndroidPaths.gamePackageForPath("/storage/emulated/0/Android/data/com.jxpd.feimo.m4399/files/CesiumLoader"),
         )
         assertEquals(
             "com.feimo.jxpd.nearme.gamecenter",

@@ -71,9 +71,20 @@ class LoaderInstaller(
             return if (gamePackage == GAME_PACKAGE) base else File(base.parentFile, "loader-installer-channels/$gamePackage")
         }
 
-        fun installedGamePackages(): List<String> = ShizukuShell.exec("pm list packages --user current com.feimo")
-            .lineSequence().map { it.removePrefix("package:").trim() }.filter(AndroidPaths::isGamePackage)
-            .distinct().sorted().toList()
+        fun installedGamePackages(exec: (String) -> String = { ShizukuShell.exec(it) }): List<String> {
+            val output = runCatching { exec("pm list packages --user current") }
+                .getOrNull()?.takeIf { it.isNotBlank() }
+                ?: exec("pm list packages")
+            return parseInstalledGamePackages(output)
+        }
+
+        internal fun parseInstalledGamePackages(pmOutput: String): List<String> =
+            pmOutput.lineSequence()
+                .map { it.removePrefix("package:").trim() }
+                .filter(AndroidPaths::isGamePackage)
+                .distinct()
+                .sorted()
+                .toList()
 
         /**
          * Pick an installed channel package when the user has not explicitly chosen one yet:
@@ -96,8 +107,14 @@ class LoaderInstaller(
         }
 
         private fun rejectNativeLoader(gamePackage: String) {
-            val paths = ShizukuShell.exec("pm path --user current " + ShizukuShell.quote(gamePackage))
-                .lineSequence().filter { it.startsWith("package:") }.map { it.removePrefix("package:").trim() }.toList()
+            val quoted = ShizukuShell.quote(gamePackage)
+            val rawPaths = runCatching { ShizukuShell.exec("pm path --user current $quoted") }
+                .getOrNull()?.takeIf { it.contains("package:") }
+                ?: ShizukuShell.exec("pm path $quoted")
+            val paths = rawPaths.lineSequence()
+                .filter { it.startsWith("package:") }
+                .map { it.removePrefix("package:").trim() }
+                .toList()
             require(paths.isNotEmpty()) { "当前用户空间没有安装所选游戏：$gamePackage" }
             for (path in paths) {
                 require(!ApkZipScanner.containsNativeLoader(path)) { "检测到原生加载器，拒绝叠加安装。请先恢复官方客户端。" }
