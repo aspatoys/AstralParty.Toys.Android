@@ -21,7 +21,7 @@ env:
   PAYLOAD_TAG: payload
   # 固定随包加载器版本：发行版不能因为上游又发了新版就悄悄换掉 SDK 与内置模组。
   # 要升级加载器时改这里（并单独验证一次），不要依赖"取最新"。
-  LOADER_VERSION: "3.8.7"
+  LOADER_VERSION: "4.0.0"
   # 1.1.2 起使用独立发行签名；后续版本必须沿用，避免意外换签。
   RELEASE_CERT_SHA256: "7cdb0644cd2bc4370152643950dde7b8cbf99ba4f770e094e9ecb775ca392bcc"
 
@@ -113,7 +113,7 @@ jobs:
           mkdir -p loaderpkg
           gh release download "$tag" --repo "$LOADER_REPO" \
             --pattern "cesium-loader-${version}.zip" --dir loaderpkg
-          echo "9033c7820044d4e0b26100dbcb08acd91a0f73d8e398c822a7ca90b0a301d1b9  loaderpkg/cesium-loader-${version}.zip" | sha256sum --check
+          echo "a817b0ada362a5e86c94b3237e1452711f223ba730f8e316545dce92676a672a  loaderpkg/cesium-loader-${version}.zip" | sha256sum --check
           unzip -q "loaderpkg/cesium-loader-${version}.zip" -d loaderpkg/unpacked
           echo "zip=$PWD/loaderpkg/cesium-loader-${version}.zip" >> "$GITHUB_OUTPUT"
           echo "sdk=$PWD/loaderpkg/unpacked/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" >> "$GITHUB_OUTPUT"
