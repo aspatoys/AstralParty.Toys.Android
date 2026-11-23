@@ -13,8 +13,8 @@ android {
     }
 
     // 版本号由 CI 传入（tag 发布时取 tag 名），本地构建用默认值。
-    val appVersionName = (project.findProperty("appVersionName") as String?)?.takeIf { it.isNotBlank() } ?: "1.4.1"
-    val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 10401
+    val appVersionName = (project.findProperty("appVersionName") as String?)?.takeIf { it.isNotBlank() } ?: "1.4.2"
+    val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 10402
 
     defaultConfig {
         applicationId = "com.hiynet.aspatoys"
