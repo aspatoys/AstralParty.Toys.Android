@@ -34,7 +34,7 @@ data class ParsedConfig(
 )
 
 /**
- * 模组配置（`configs/<ModId>.json`）的读写辅助。
+ * 模组配置（`mods/<ModId>/config.json`；停用模组在 `disabled_mods/`）的读写辅助。
  *
  * 配置由游戏内 SDK 生成与消费，格式是「平铺键值 + `_comments` 多语言说明」。
  * 界面改值只做**定点替换**，不从解析结果重新序列化：重排一遍就会把用户的注释、空行、

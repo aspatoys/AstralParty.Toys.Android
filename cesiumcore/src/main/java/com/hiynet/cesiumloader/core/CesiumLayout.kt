@@ -12,6 +12,11 @@ class CesiumLayout(val root: File) {
 
     val mods: File get() = File(root, MODS)
     val disabledMods: File get() = File(root, DISABLED_MODS)
+
+    /**
+     * 旧版集中配置目录。4.0.0 起模组配置在模组目录里（见 [configFile]），加载器启动时会把
+     * 这个目录改名 `configs.bak`，里面即使还留着旧文件也不会被任何 mod 读取。
+     */
     val configs: File get() = File(root, CONFIGS)
     val logs: File get() = File(root, LOGS)
     val dataDir: File get() = File(root, DATA)
@@ -42,7 +47,7 @@ class CesiumLayout(val root: File) {
     /** 加载器启动时会创建的目录全集，安装器/还原逻辑按同一份清单处理。 */
     val managedDirectories: List<File>
         get() = listOf(
-            root, mods, disabledMods, configs, logs, dataDir,
+            root, mods, disabledMods, logs, dataDir,
             skins, audio, audioSchemes, sdkDir, bootstrapDir, speed, window,
         )
 
@@ -51,7 +56,14 @@ class CesiumLayout(val root: File) {
     fun modSidecar(modId: String): File = File(modDir(modId), "$modId.json")
     fun disabledDir(modId: String): File = File(disabledMods, modId)
     fun disabledDll(modId: String): File = File(disabledDir(modId), "$modId.dll")
-    fun configFile(modId: String): File = File(configs, "$modId.json")
+
+    /**
+     * 玩家配置的唯一位置（4.0.0 起）：启用 → `mods/<ModId>/config.json`，
+     * 停用 → `disabled_mods/<ModId>/config.json`（模组停用时不把它搬回 mods）。
+     */
+    fun configFile(modId: String, disabled: Boolean = false): File =
+        File(if (disabled) disabledDir(modId) else modDir(modId), MOD_CONFIG_FILE_NAME)
+
     fun modDataDir(modId: String): File = File(dataDir, modId)
 
     override fun toString(): String = "CesiumLayout(root=$root)"
@@ -80,5 +92,8 @@ class CesiumLayout(val root: File) {
         const val DEVELOPER_LOG = "developer.log"
         const val ENABLED_INDEX = "enabled.json"
         const val INSTALLED_INDEX = "installed.json"
+
+        /** 模组配置文件名（在模组自己的目录里，4.0.0 起唯一位置）。 */
+        const val MOD_CONFIG_FILE_NAME = "config.json"
     }
 }

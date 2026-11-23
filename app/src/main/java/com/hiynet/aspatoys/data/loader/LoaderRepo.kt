@@ -135,29 +135,22 @@ class LoaderRepo(
         return result
     }
 
-    /** 配置文件的标准位置（写入永远走这里）。 */
-    fun configPath(modId: String): String = "${layout().configsRoot.absolutePath}/$modId.json"
+    /** 配置文件位置（4.0.0 起唯一）：`mods/<ModId>/config.json`；停用模组是 `disabled_mods/<ModId>/config.json`。 */
+    fun configPath(modId: String, disabled: Boolean = false): String =
+        layout().modConfigFile(modId, disabled).absolutePath
 
     /**
-     * 读玩家配置。
-     *
-     * 与加载器 SDK 的查找顺序一致：先 `configs/<ModId>.json`，再模组目录里的 `config.json`
-     * （没迁移过的旧安装）。两处都没有返回 null。
+     * 读玩家配置：模组目录里的 `config.json`（启用 / 停用看目录）。
+     * 旧版集中放的 `configs/<ModId>.json` 已在 4.0.0 废弃，不再读取。
      */
-    fun readConfig(modId: String): String? {
+    fun readConfig(modId: String, disabled: Boolean = false): String? {
         if (!ready()) return null
-        val layout = layout()
-        fs.readText(configPath(modId))?.let { if (it.isNotBlank()) return it }
-        for (root in listOf(layout.modsRoot, layout.disabledModsRoot)) {
-            val text = fs.readText("${root.absolutePath}/$modId/config.json")
-            if (!text.isNullOrBlank()) return text
-        }
-        return null
+        return fs.readText(configPath(modId, disabled))?.takeIf { it.isNotBlank() }
     }
 
-    fun writeConfig(modId: String, text: String) {
+    fun writeConfig(modId: String, text: String, disabled: Boolean = false) {
         requireReady()
-        installer.writeConfig(layout(), modId, text)
+        installer.writeConfig(layout(), modId, text, disabled)
     }
 
     /** 外部改动了加载器目录（装/还原加载器、导入模组）后调用，让各页面下次进入时重扫。 */

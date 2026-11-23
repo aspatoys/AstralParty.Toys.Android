@@ -519,7 +519,7 @@ private fun SettingsDetailView(
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
-                        "安卓版 CesiumLoader 根目录默认为 /sdcard/CesiumLoader；模组在 mods/ 下，配置在 configs/，日志在 logs/。",
+                        "安卓版 CesiumLoader 根目录默认为 /sdcard/CesiumLoader；模组与它的 config.json 都在 mods/<ModId>/ 下（停用的在 disabled_mods/），日志在 logs/。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

@@ -13,7 +13,7 @@ internal static class Program
         Environment.SetEnvironmentVariable("CESIUM_LOADER_DIR", root);
         Directory.CreateDirectory(Path.Combine(root, "data"));
         Check(AndroidApi.Root == root, "bootstrap root is authoritative");
-        Check(AndroidApi.GetModConfigPath("Test") == Path.Combine(root, "configs", "Test.json"), "canonical config layout");
+        Check(AndroidApi.GetModConfigPath("Test") == Path.Combine(root, "mods", "Test", "config.json"), "canonical config layout");
         bool enabled = false;
         AndroidApi.RegisterToggle("Test", "enabled", "开关", () => enabled, value => enabled = value);
         AndroidApi.GetActions("test")[0].Set(true);

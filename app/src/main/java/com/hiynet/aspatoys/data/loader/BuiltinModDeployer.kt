@@ -22,7 +22,7 @@ class BuiltinModDeployer(
     /**
      * 把 [assetDir] 下的内置模组逐个投放进加载器根目录 [root]。
      *
-     * 只写自己的文件，不清目录、不动 `config.json`、`mod.cfg`、`configs/<Id>.json` 与玩家独有的
+     * 只写自己的文件，不清目录、不动 `config.json`、`mod.cfg` 与玩家独有的
      * 皮肤/预设资源，所以覆盖安装不会重置本地配置。
      */
     fun deploy(

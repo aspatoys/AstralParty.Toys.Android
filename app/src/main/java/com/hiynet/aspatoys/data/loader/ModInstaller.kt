@@ -151,7 +151,7 @@ class ModInstaller(
      * 删除一个已安装模组：目录布局删整个 `mods|disabled_mods/<folder>/`，
      * 平铺旧布局删 `<modId>.dll` 和同名 sidecar。
      *
-     * 只删模组本体，不动 `configs/<ModId>.json`（配置留着，重装后还能用）。
+     * 只删这个模组主体（连同它目录里的 `config.json`），不动别的模组。
      */
     fun delete(layout: ModLayout, modId: String, folderName: String?, disabled: Boolean, log: (String) -> Unit): Boolean {
         val root = if (disabled) layout.disabledModsRoot.absolutePath else layout.modsRoot.absolutePath
@@ -186,13 +186,14 @@ class ModInstaller(
         runCatching { if (fs.exists(manifest)) fs.delete(manifest) }
         return true
     }
-    /** 读/写玩家配置：`configs/<ModId>.json`。 */
-    fun readConfig(layout: ModLayout, modId: String): String? =
-        fs.readText("${layout.configsRoot.absolutePath}/$modId.json")
+    /** 读玩家配置：模组目录里的 `config.json`（停用模组读它当前所在的 `disabled_mods`）。 */
+    fun readConfig(layout: ModLayout, modId: String, disabled: Boolean = false): String? =
+        fs.readText(layout.modConfigFile(modId, disabled).absolutePath)
 
-    fun writeConfig(layout: ModLayout, modId: String, text: String) {
-        fs.makeDirectories(layout.configsRoot.absolutePath)
-        fs.writeText("${layout.configsRoot.absolutePath}/$modId.json", text)
+    fun writeConfig(layout: ModLayout, modId: String, text: String, disabled: Boolean = false) {
+        val target = layout.modConfigFile(modId, disabled)
+        fs.makeDirectories(target.parentFile?.absolutePath ?: layout.modsRoot.absolutePath)
+        fs.writeText(target.absolutePath, text)
     }
 
     /**

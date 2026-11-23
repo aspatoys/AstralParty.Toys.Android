@@ -207,7 +207,7 @@ class LoaderInstaller(
             },
             ownershipWarning = runCatching { hasPayload() }.getOrDefault(false).let { ready ->
                 if (!ready) null
-                else owner.verify(listOf(path, loaderRoot, "$loaderRoot/logs", "$loaderRoot/configs", bootstrapPath, "$loaderRoot/sdk/CesiumLoader.SDK.dll"))
+                else owner.verify(listOf(path, loaderRoot, "$loaderRoot/logs", bootstrapPath, "$loaderRoot/sdk/CesiumLoader.SDK.dll"))
             },
         )
     }
@@ -316,7 +316,7 @@ class LoaderInstaller(
 
     private fun deployPayload(log: (String) -> Unit) {
         ShizukuShell.exec(
-            "mkdir -p " + listOf("mods", "configs", "logs", "data", "disabled_mods", "skins", "sdk", "bootstrap")
+            "mkdir -p " + listOf("mods", "logs", "data", "disabled_mods", "skins", "sdk", "bootstrap")
                 .joinToString(" ") { ShizukuShell.quote("$loaderRoot/$it") },
         )
         // Repair old trees before deploying; later writes also verify each new inode.

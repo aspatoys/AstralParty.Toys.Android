@@ -34,7 +34,7 @@
 
 ## 应用到游戏
 
-方案先保存到 App 内部，导入不要求访问游戏目录。点「应用」时需要 Shizuku 或 Root，以及已安装的 CesiumLoader。应用会完整写入当前加载器目录的 `skins/<方案名>/`，最后修改 `configs/CardSkinMod.json` 的 `Enabled` 与 `ActiveSkin`，保留其他配置。
+方案先保存到 App 内部，导入不要求访问游戏目录。点「应用」时需要 Shizuku 或 Root，以及已安装的 CesiumLoader。应用会完整写入当前加载器目录的 `skins/<方案名>/`，最后修改 `mods/CardSkinMod/config.json` 的 `Enabled` 与 `ActiveSkin`，保留其他配置。
 
 所有写入成功后请完全重启游戏。界面的「已选择」表示已写入游戏配置，不表示当前运行中的游戏已经重新加载纹理。
 

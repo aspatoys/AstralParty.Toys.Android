@@ -160,14 +160,15 @@ class GameCardProfilesTest {
 
             game.apply(root.absolutePath, id)
 
-            val config = parseJsonObjectOrNull(File(root, "configs/CardSkinMod.json").readText())!!
+            val config = parseJsonObjectOrNull(File(root, "mods/CardSkinMod/config.json").readText())!!
             assertEquals(true, config.booleanOrDefault("Enabled", false))
             assertEquals(id, config.string("ActiveSkin"))
             assertTrue(File(root, "skins/$id/UT_HandCard_10001.png").isFile)
             assertTrue("runtime must be deployed", File(root, "mods/CardSkinMod/CardSkinMod.dll").isFile)
-            // Unrelated mods and configs survive.
+            // Unrelated mods survive; the deprecated central configs/ folder is never written.
             assertEquals(byteArrayOf(9, 9).toList(), File(root, "mods/OtherMod/OtherMod.dll").readBytes().toList())
             assertEquals("""{"keep":true}""", File(root, "configs/OtherMod.json").readText())
+            assertFalse("configs/ 已废弃，不再被写入", File(root, "configs/CardSkinMod.json").exists())
             // Staging leftovers are cleaned up.
             assertTrue(root.listFiles().orEmpty().none { it.name.startsWith(".card-import-") || it.name.startsWith(".card-backup-") })
 
@@ -202,7 +203,7 @@ class GameCardProfilesTest {
 
             game.apply(root.absolutePath, CardPackageStore.GameDefault)
 
-            val config = parseJsonObjectOrNull(File(root, "configs/CardSkinMod.json").readText())!!
+            val config = parseJsonObjectOrNull(File(root, "mods/CardSkinMod/config.json").readText())!!
             assertEquals(false, config.booleanOrDefault("Enabled", true))
             assertTrue("restoring default keeps the imported scheme", File(root, "skins/$id/UT_HandCard_10001.png").isFile)
         }

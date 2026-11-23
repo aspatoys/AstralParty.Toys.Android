@@ -11,7 +11,7 @@ data class InstalledMod(
     val dll: File,
     /** 一模组一目录时的目录；扁平存放（`mods/X.dll`）时为 null。 */
     val folder: File?,
-    /** 玩家配置：`configs/<ModId>.json`。 */
+    /** 玩家配置：`mods/<ModId>/config.json`（停用模组在 `disabled_mods/<ModId>/config.json`）。 */
     val configFile: File,
     val hasConfig: Boolean,
     /** `<ModId>/<ModId>.json` sidecar 是否在位。 */

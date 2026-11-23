@@ -36,7 +36,9 @@ class CesiumLayoutTest {
         assertEquals(File(layout.root, "mods/MyMod/MyMod.dll"), layout.modDll("MyMod"))
         assertEquals(File(layout.root, "mods/MyMod/MyMod.json"), layout.modSidecar("MyMod"))
         assertEquals(File(layout.root, "disabled_mods/MyMod/MyMod.dll"), layout.disabledDll("MyMod"))
-        assertEquals(File(layout.root, "configs/MyMod.json"), layout.configFile("MyMod"))
+        // 4.0.0 起玩家配置跟着模组目录走；停用模组读它当前所在的 disabled_mods。
+        assertEquals(File(layout.root, "mods/MyMod/config.json"), layout.configFile("MyMod"))
+        assertEquals(File(layout.root, "disabled_mods/MyMod/config.json"), layout.configFile("MyMod", disabled = true))
         assertEquals(File(layout.root, "data/MyMod"), layout.modDataDir("MyMod"))
     }
 
@@ -44,8 +46,10 @@ class CesiumLayoutTest {
     fun `managed directories cover the loader contract`() {
         val layout = CesiumLayout(File(temp.root, "CesiumLoader"))
         val names = layout.managedDirectories.map { it.name }
-        assertTrue(names.containsAll(listOf("CesiumLoader", "mods", "disabled_mods", "configs", "logs")))
-        assertEquals(13, layout.managedDirectories.size)
+        assertTrue(names.containsAll(listOf("CesiumLoader", "mods", "disabled_mods", "logs")))
+        // configs/ 已废弃：加载器不再创建它，旧目录由引导改名 configs.bak。
+        assertFalse(names.contains("configs"))
+        assertEquals(12, layout.managedDirectories.size)
         assertEquals(layout.managedDirectories.size, layout.managedDirectories.toSet().size)
     }
 
