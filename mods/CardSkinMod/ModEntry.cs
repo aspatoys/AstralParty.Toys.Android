@@ -78,7 +78,7 @@ namespace CardSkinMod
         }
 
         /// <summary>
-        /// 配置热切换：引导线程轮询到 configs/CardSkinMod.json 变化后在主线程调用。
+        /// 配置热切换：引导线程轮询到模组目录里的 config.json 变化后在主线程调用。
         /// 先完整卸载（恢复原始卡面、释放贴图），再按新配置重建。
         /// </summary>
         public override void OnConfigChanged()

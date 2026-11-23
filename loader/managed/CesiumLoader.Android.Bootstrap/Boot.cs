@@ -33,7 +33,7 @@ namespace CesiumLoader.Android.Bootstrap
 
         private static readonly string[] Directories =
         {
-            "mods", "disabled_mods", "configs", "logs", "data",
+            "mods", "disabled_mods", "logs", "data",
             "skins", "audio", "audio-schemes", "sdk", "bootstrap", "speed", "window",
         };
 
@@ -103,7 +103,7 @@ namespace CesiumLoader.Android.Bootstrap
             _bootstrapLog = Path.Combine(_logsDir, "bootstrap-" + _stamp + ".log");
 
             EnsureDirectories();
-            MigrateConfigs();
+            RetireLegacyConfigs();
 
             Environment.SetEnvironmentVariable("CESIUM_LOADER_DIR", _root);
             Environment.SetEnvironmentVariable("CESIUM_MODS_DIR", _mods);
@@ -186,7 +186,8 @@ namespace CesiumLoader.Android.Bootstrap
         ///
         /// SDK 里有 `ModConfig.PollAllChanged()`（比对文件时间戳、重新读、触发 Changed 事件），
         /// 但它自己不带定时器 —— 桌面版由原生加载器线程驱动，安卓这边没人调，等于没有热重载。
-        /// 这里起一个后台线程每秒半问一次，App 写完 `configs/&lt;ModId&gt;.json` 就能立刻生效。
+        /// 这里起一个后台线程每秒半问一次，App 写完 `mods/&lt;ModId&gt;/config.json`（停用模组写在
+        /// `disabled_mods/&lt;ModId&gt;/config.json`）就能立刻生效。
         ///
         /// 失败一律吞掉：配置写一半是正常情况，下一轮会再读到完整内容。
         /// </summary>
@@ -333,44 +334,26 @@ namespace CesiumLoader.Android.Bootstrap
         }
 
         /// <summary>
-        /// 旧版把玩家配置放在 mods/&lt;ModId&gt;/config.json；安卓这里统一放到 configs/&lt;ModId&gt;.json。
-        /// 迁移是单向的：外置文件已存在就不覆盖，内层文件改名 .bak 保留（已有 .bak 直接覆盖）。
-        /// 单个模组失败不影响其它模组。
+        /// 4.0.0 起 mod 配置只有一处：<c>mods/&lt;ModId&gt;/config.json</c>（停用模组写在
+        /// <c>disabled_mods/&lt;ModId&gt;/config.json</c>）。旧版集中目录 <c>configs/</c> 里的改动
+        /// 不会再被任何 mod 读取，留着只会让人以为改了会生效 —— 启动时整目录改名
+        /// <c>configs.bak</c>（保留内容便于找回，不删除用户数据）。
         /// </summary>
-        private static void MigrateConfigs()
+        private static void RetireLegacyConfigs()
         {
-            string[] modDirs;
             try
             {
-                modDirs = Directory.GetDirectories(_mods);
+                string legacy = Path.Combine(_root, ConfigsFolder);
+                if (!Directory.Exists(legacy)) return;
+
+                string retired = Path.Combine(_root, ConfigsFolder + ".bak");
+                if (Directory.Exists(retired)) return;   // 已经退休过一次：不覆盖备份，也不删旧目录
+
+                Directory.Move(legacy, retired);
             }
             catch (Exception error)
             {
-                TryAppend(Path.Combine(_root, "logs/bootstrap_error.txt"), "migrate configs: " + Describe(error));
-                return;
-            }
-
-            for (int i = 0; i < modDirs.Length; i++)
-            {
-                string dir = modDirs[i];
-                try
-                {
-                    string inner = Path.Combine(dir, "config.json");
-                    if (!File.Exists(inner)) continue;
-
-                    string name = Path.GetFileName(dir);
-                    string outer = Path.Combine(_root, ConfigsFolder, name + ".json");
-                    if (!File.Exists(outer)) File.Copy(inner, outer);
-
-                    string backup = inner + ".bak";
-                    if (File.Exists(backup)) File.Delete(backup);
-                    File.Move(inner, backup);
-                }
-                catch (Exception error)
-                {
-                    TryAppend(Path.Combine(_root, "logs/bootstrap_error.txt"),
-                        "migrate configs " + Path.GetFileName(dir) + ": " + Describe(error));
-                }
+                TryAppend(Path.Combine(_root, "logs/bootstrap_error.txt"), "retire configs: " + Describe(error));
             }
         }
 

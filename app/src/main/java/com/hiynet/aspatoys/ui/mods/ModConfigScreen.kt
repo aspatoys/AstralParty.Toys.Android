@@ -61,8 +61,8 @@ import com.hiynet.aspatoys.ui.components.SkeletonDetail
 /**
  * 模组配置独立页面：表单改值 + 文本兜底。
  *
- * 保存时直接写 `configs/<ModId>.json` 并原样保留注释与键顺序；
- * 加载器后台线程会重读配置，支持热重载的模组保存后立刻生效。
+ * 保存时直接写模组目录里的 `config.json`（4.0.0 起唯一位置，旧版集中目录 `configs/` 已废弃），
+ * 并原样保留注释与键顺序；加载器后台线程会重读配置，支持热重载的模组保存后立刻生效。
  */
 @Composable
 fun ModConfigScreen(
@@ -73,6 +73,8 @@ fun ModConfigScreen(
 ) {
     BackHandler { onDismiss() }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    val configRelativePath =
+        (if (state.disabled) "disabled_mods" else "mods") + "/${state.modId}/config.json"
 
     Column(
         modifier = modifier
@@ -173,7 +175,7 @@ fun ModConfigScreen(
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "直接编辑 configs/${state.modId}.json，保存前必须是合法的 JSON 对象。",
+                        "直接编辑 $configRelativePath，保存前必须是合法的 JSON 对象。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -186,7 +188,7 @@ fun ModConfigScreen(
                             .heightIn(min = 280.dp, max = 500.dp),
                         textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 13.sp),
                         shape = RoundedCornerShape(12.dp),
-                        label = { Text("configs/${state.modId}.json") },
+                        label = { Text(configRelativePath) },
                     )
                 }
             }
@@ -290,8 +292,7 @@ fun ModConfigScreen(
         ConfirmDialog(
             title = "删除模组「${state.title}」？",
             lines = listOf(
-                "删除这个模组的文件。",
-                "保留 configs/${state.modId}.json，以后重新安装会沿用这份配置。",
+                "删除这个模组的文件，包括它目录里的 config.json。",
                 "删除后不能撤销。只是暂时不想用的话，关掉模组开关就行。",
             ),
             confirmLabel = "删除",

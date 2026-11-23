@@ -128,7 +128,7 @@ public sealed class ShortcutItem
 | `TeammateCheckMod` | 队友战绩面板 | 开关 | 点一次发 `toggleKey`（默认 F9） |
 | `TownTrainer` | 小镇修改器面板 | 按钮 | 点一次发 F8 |
 
-`TownTrainer` 没有 `configs/TownTrainer.json`，面板开关在程序集里写死为 `Input.GetKeyDown(289)`（`KeyCode.F8`）。这一结论来自对 `TownTrainer.dll` 的 IL 反汇编：`TownTrainerPanel::Tick` 里紧跟 `ldc.i4 289` 就是 `GetKeyDown` 调用。没有配置文件的模组只能这样取证。
+`TownTrainer` 没有 `mods/TownTrainer/config.json`，面板开关在程序集里写死为 `Input.GetKeyDown(289)`（`KeyCode.F8`）。这一结论来自对 `TownTrainer.dll` 的 IL 反汇编：`TownTrainerPanel::Tick` 里紧跟 `ldc.i4 289` 就是 `GetKeyDown` 调用。没有配置文件的模组只能这样取证。
 
 ### 6.1 为什么两个模组是「latch」而不是普通开关
 
@@ -182,7 +182,7 @@ public sealed class ShortcutItem
 ## 8. 调试
 
 - 注册与覆盖都会写进 `logs/developer.log`，形如 `[api] shortcut ModId/Id`、`[api] shortcut button ModId/Id`。
-- 状态不对时优先看该模组的 `configs/<Id>.json`：`get` 读的就是这里。
+- 状态不对时优先看该模组的 `mods/<Id>/config.json`（停用模组在 `disabled_mods/<Id>/config.json`）：`get` 读的就是这里。
 - 游戏内「控制台」页可导出日志：点击「导出日志」会在 `data/toys-log-<时间戳>.log` 生成一份含屏幕尺寸、倍速、分组数与全部模组状态的快照。
 
 ## 9. 与旧版接口的关系

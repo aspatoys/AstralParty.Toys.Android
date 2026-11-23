@@ -14,21 +14,30 @@ import java.io.File
  * ```
  * /sdcard/CesiumLoader/                       ← 加载器根目录（SdkDirectory 也在这一层）
  * /sdcard/CesiumLoader/mods/<ModId>/<ModId>.dll
- * /sdcard/CesiumLoader/configs/               ← 模组配置（旧版集中存放位置）
+ * /sdcard/CesiumLoader/mods/<ModId>/config.json   ← 模组玩家配置（4.0.0 起唯一位置）
  * /sdcard/CesiumLoader/logs/                  ← 加载器与模组日志
  * /sdcard/CesiumLoader/manifests/packages/    ← 本 App 记录「上次导入写了哪些文件」
  * ```
  *
- * 桌面版还有 `disabled_mods/` 与 `doorstop_config.json`；安卓版是否有同名目录/配置文件尚未确认，
- * 所以这两项都按「存在就认、不存在就跳过」处理，配置文件名支持多个候选。
+ * 停用的模组整个目录在 `disabled_mods/<ModId>/`，它的配置也跟着在那一层（见 [modConfigFile]）。
+ * 旧版集中放配置的 `configs/` 已在 4.0.0 废弃（加载器启动时改名 `configs.bak`），
+ * 这里既不再读也不再写。
  */
 class ModLayout(val loaderRoot: File) {
     val modsRoot: File get() = File(loaderRoot, MODS_FOLDER)
     val disabledModsRoot: File get() = File(loaderRoot, DISABLED_MODS_FOLDER)
     val sdkRoot: File get() = File(loaderRoot, SDK_FOLDER)
     val bootstrapRoot: File get() = File(loaderRoot, BOOTSTRAP_FOLDER)
+    /** 旧版集中配置目录（4.0.0 起废弃，加载器启动时改名 `configs.bak`）；不再读写它。 */
     val configsRoot: File get() = File(loaderRoot, CONFIGS_FOLDER)
     val configFile: File get() = File(loaderRoot, CONFIG_FILE_NAME)
+
+    /**
+     * 模组配置的唯一位置（4.0.0 起）：模组在 `disabled_mods` 时写那边，否则写
+     * `mods/<ModId>/config.json`（与加载器 SDK 的查找规则一致）。
+     */
+    fun modConfigFile(modId: String, disabled: Boolean = false): File =
+        File(if (disabled) disabledModsRoot else modsRoot, "$modId/$MOD_CONFIG_FILE_NAME")
 
     /** 安装器写的装载状态：加载器版本、SDK 版本、装了哪些内置模组。 */
     val installedIndex: File get() = File(loaderRoot, INSTALLED_INDEX)

@@ -13,7 +13,8 @@ import java.util.UUID
  * 塞进另一个同名目录（`disabled_mods/X/X`），模组从此扫不到。
  *
  * 这里集中处理：只保留一份能被扫描的主体、平铺 DLL 让位给嵌套目录、冲突的原始副本搬进
- * `<loader>/backups/mod-state/<Id>/<UUID>/`（不在扫描范围内），集中配置 `configs/<Id>.json` 从不读写。
+ * `<loader>/backups/mod-state/<Id>/<UUID>/`（不在扫描范围内）；模组目录里的 `config.json` 跟着主体走，
+ * 已废弃的集中目录 `configs/` 从不读写。
  */
 class ModStateStore(private val fs: LoaderFs) {
 

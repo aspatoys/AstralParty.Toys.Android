@@ -61,7 +61,13 @@ namespace CesiumAndroid
         }
 
         public static string ModsDirectory { get { return Path.Combine(Root, "mods"); } }
-        public static string ConfigDirectory { get { return Path.Combine(Root, "configs"); } }
+
+        /// <summary>
+        /// 模组目录。4.0.0 起每个 mod 的配置在自己的目录里（<c>mods/&lt;ModId&gt;/config.json</c>），
+        /// 旧版集中配置目录 <c>configs/</c> 已废弃（引导启动时改名 <c>configs.bak</c>）；
+        /// 这个属性保留只为不破坏已编译的 mod，取具体文件请用 <see cref="GetModConfigPath"/>。
+        /// </summary>
+        public static string ConfigDirectory { get { return ModsDirectory; } }
         public static string LogPath { get { return Path.Combine(Root, "developer.log"); } }
 
         public static float ScreenWidth { get { return Screen.width; } }
@@ -287,11 +293,17 @@ namespace CesiumAndroid
 
         public static string GetModDirectory(string modId) { return Path.Combine(ModsDirectory, modId); }
         public static string GetModDataDirectory(string modId) { return Path.Combine(DataDirectory, modId); }
+
+        /// <summary>模组配置路径：<c>mods/&lt;ModId&gt;/config.json</c>（4.0.0 起唯一位置）。</summary>
         public static string GetModConfigPath(string modId) { return GetConfigPath(modId); }
+
+        /// <summary>同 <see cref="GetModConfigPath"/>；参数带不带 <c>.json</c> 都行（保留旧名）。</summary>
         public static string GetConfigPath(string fileNameOrModId)
         {
-            string name = fileNameOrModId.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ? fileNameOrModId : fileNameOrModId + ".json";
-            return Path.Combine(ConfigDirectory, name);
+            string id = fileNameOrModId ?? "";
+            if (id.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                id = id.Substring(0, id.Length - ".json".Length);
+            return Path.Combine(GetModDirectory(id), "config.json");
         }
 
         /// <summary>让 CesiumLoader.SDK 的 SdkPath / ModConfig 也指向 Android 目录。</summary>
@@ -349,9 +361,13 @@ namespace CesiumAndroid
             }
         }
 
+        /// <summary>确保模组的 config.json 存在（4.0.0 起写在 <c>mods/&lt;名字&gt;/config.json</c>）。</summary>
         public static string EnsureConfig(string name, string defaultJson)
         {
-            string relative = Path.Combine("configs", name);
+            string id = name ?? "";
+            if (id.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                id = id.Substring(0, id.Length - ".json".Length);
+            string relative = Path.Combine("mods", id, "config.json");
             string existing = ReadText(relative);
             if (existing != null) return existing;
             WriteText(relative, defaultJson);

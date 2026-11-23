@@ -50,6 +50,8 @@ data class ConfigEditorState(
     /** 文本被改过、还没保存。 */
     val dirty: Boolean = false,
 ) {
+    /** 模组当前是否停用（决定配置写在 mods 还是 disabled_mods 里）。 */
+    val disabled: Boolean get() = entry.disabledFolder
     val editable: Boolean get() = fields.isNotEmpty() || rawMode
 }
 
@@ -369,7 +371,7 @@ class ModsController(
     /** 打开某个模组的配置面板。 */
     fun openConfig(entry: ModEntry) {
         configTextJob?.cancel()
-        val path = repo.configPath(entry.name)
+        val path = repo.configPath(entry.name, entry.disabledFolder)
         configEditor = ConfigEditorState(
             entry = entry,
             modId = entry.name,
@@ -378,7 +380,7 @@ class ModsController(
             loading = true,
         )
         scope.launch {
-            val text = withContext(Dispatchers.IO) { repo.readConfig(entry.name) }
+            val text = withContext(Dispatchers.IO) { repo.readConfig(entry.name, entry.disabledFolder) }
             val current = configEditor ?: return@launch
             if (current.modId != entry.name) return@launch
             if (text == null) {
@@ -423,7 +425,7 @@ class ModsController(
                 configTextJob?.cancel()
                 configEditor = null
                 scanNow()
-                operation.succeed("已删除 ${entry.shownName}。配置文件 configs/${entry.name}.json 保留着。")
+                operation.succeed("已删除 ${entry.shownName}。它目录里的 config.json 一起删掉了。")
             } catch (failure: Throwable) {
                 operation.fail("删除失败：" + (failure.message ?: failure.toString()))
             } finally {
@@ -491,7 +493,7 @@ class ModsController(
         )
     }
 
-    /** 保存到 `configs/<ModId>.json`；加载器会热重载（下一次轮询就生效）。 */
+    /** 保存到模组目录里的 `config.json`（停用模组写它当前所在的 `disabled_mods`）；加载器会热重载。 */
     fun saveConfig() {
         val current = configEditor ?: return
         if (current.saving) return
@@ -504,7 +506,7 @@ class ModsController(
         configEditor = current.copy(saving = true)
         scope.launch {
             try {
-                withContext(Dispatchers.IO) { repo.writeConfig(current.modId, current.text) }
+                withContext(Dispatchers.IO) { repo.writeConfig(current.modId, current.text, current.disabled) }
                 configEditor = configEditor?.copy(saving = false, dirty = false, error = null)
                 Snackbars.show("${current.title} 配置已保存")
             } catch (failure: Exception) {

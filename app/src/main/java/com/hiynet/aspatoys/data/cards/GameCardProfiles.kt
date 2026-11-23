@@ -48,8 +48,9 @@ class GameCardProfiles(
                 deployDirectory(root, id, local, progress)
             }
         }
-        fs.makeDirectories("$root/configs")
-        fs.writeText("$root/configs/CardSkinMod.json", config)
+        // 4.0.0 起配置写在模组自己的目录里（installRuntime 已确保它在 mods/ 下）。
+        fs.makeDirectories("$root/mods/CardSkinMod")
+        fs.writeText("$root/mods/CardSkinMod/config.json", config)
         if (id != CardPackageStore.GameDefault) File(store.directory(id), ".pending").delete()
     }
 
@@ -155,12 +156,11 @@ class GameCardProfiles(
 
     private fun sdkExists(root: String) = fs.exists("$root/sdk/CesiumLoader.SDK.dll") || fs.exists("$root/CesiumLoader.SDK.dll")
 
+    /** 卡面模组的玩家配置：模组目录里的 `config.json`（启用优先，停用目录兜底）；都没有返回 "{}"。 */
     private fun readConfig(root: String): String {
-        val current = "$root/configs/CardSkinMod.json"
-        if (fs.exists(current)) return fs.readText(current)?.takeIf { it.isNotBlank() } ?: error("无法读取卡面配置，原文件已保留。")
         for (folder in listOf("mods", "disabled_mods")) {
-            val legacy = "$root/$folder/CardSkinMod/config.json"
-            if (fs.exists(legacy)) return fs.readText(legacy)?.takeIf { it.isNotBlank() } ?: error("无法读取旧卡面配置。")
+            val path = "$root/$folder/CardSkinMod/config.json"
+            if (fs.exists(path)) return fs.readText(path)?.takeIf { it.isNotBlank() } ?: error("无法读取卡面配置，原文件已保留。")
         }
         return "{}"
     }
