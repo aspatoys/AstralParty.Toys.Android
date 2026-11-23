@@ -1,4 +1,4 @@
-﻿package com.hiynet.aspatoys.data.updates
+package com.hiynet.aspatoys.data.updates
 
 import com.hiynet.aspatoys.data.loader.LoaderFs
 import org.junit.Assert.assertEquals
@@ -158,6 +158,61 @@ class ManagedLoaderUpdateTest {
         val index = fs.files["$root/installed.json"]!!.toString(Charsets.UTF_8)
         assertTrue(index.contains("\"3.8.7\""))
         assertEquals(1, fs.deletes) // only the finished transaction directory is removed
+    }
+
+    @Test fun `install deploys the app bootstrap over the previous one`() = withTemp { dir ->
+        val fs = MemoryFs()
+        val installer = ManagedLoaderUpdate(fs)
+        val pkg = installer.prepare(zip(dir, payload), "3.8.7", File(dir, "stage"))
+        fs.files["$root/sdk/CesiumLoader.SDK.dll"] = text("old-sdk")
+        fs.files["$root/bootstrap/CesiumLoader.Android.Bootstrap.dll"] = text("old-bootstrap")
+        val appBootstrap = File(dir, "app-bootstrap.dll").apply { writeText("new-bootstrap") }
+
+        installer.install(root, pkg, bootstrap = appBootstrap)
+
+        // 安卓引导与 SDK 同源：更新加载器必须把它一起换掉，否则旧引导会搬走模组配置。
+        assertEquals("new-bootstrap",
+            fs.files["$root/${ManagedLoaderUpdate.BOOTSTRAP_RELATIVE}"]!!.toString(Charsets.UTF_8))
+        assertEquals("sdk", fs.files["$root/sdk/CesiumLoader.SDK.dll"]!!.toString(Charsets.UTF_8))
+        // 发行包里的桌面引导不属于安卓载荷，不落盘。
+        assertFalse(fs.files.containsKey("$root/bootstrap/CesiumLoader.Bootstrap.dll"))
+        assertTrue(fs.files.keys.none { it.contains(".toys-loader-update-") })
+    }
+
+    @Test fun `install without an app bootstrap leaves the device bootstrap alone`() = withTemp { dir ->
+        val fs = MemoryFs()
+        val installer = ManagedLoaderUpdate(fs)
+        val pkg = installer.prepare(zip(dir, payload), "3.8.7", File(dir, "stage"))
+        fs.files["$root/sdk/CesiumLoader.SDK.dll"] = text("old-sdk")
+        fs.files["$root/bootstrap/CesiumLoader.Android.Bootstrap.dll"] = text("old-bootstrap")
+
+        installer.install(root, pkg)
+
+        assertEquals("old-bootstrap",
+            fs.files["$root/${ManagedLoaderUpdate.BOOTSTRAP_RELATIVE}"]!!.toString(Charsets.UTF_8))
+    }
+
+    @Test fun `a failed bootstrap publish rolls back the sdk and keeps the old bootstrap`() = withTemp { dir ->
+        val fs = MemoryFs()
+        val installer = ManagedLoaderUpdate(fs)
+        val pkg = installer.prepare(zip(dir, payload), "3.8.7", File(dir, "stage"))
+        fs.files["$root/sdk/CesiumLoader.SDK.dll"] = text("old-sdk")
+        fs.files["$root/bootstrap/CesiumLoader.Android.Bootstrap.dll"] = text("old-bootstrap")
+        val appBootstrap = File(dir, "app-bootstrap.dll").apply { writeText("new-bootstrap") }
+        fs.failMove = { from, _ -> from.contains("/stage/bootstrap/") }
+
+        try {
+            installer.install(root, pkg, bootstrap = appBootstrap)
+            fail("bootstrap publish failure must abort the update")
+        } catch (expected: IllegalStateException) {
+            assertTrue(expected.message.orEmpty().isNotEmpty())
+        }
+
+        // 同一个事务：引导失败时已发布的 SDK 也要退回原样。
+        assertEquals("old-sdk", fs.files["$root/sdk/CesiumLoader.SDK.dll"]!!.toString(Charsets.UTF_8))
+        assertEquals("old-bootstrap",
+            fs.files["$root/${ManagedLoaderUpdate.BOOTSTRAP_RELATIVE}"]!!.toString(Charsets.UTF_8))
+        assertTrue(fs.files.keys.none { it.contains(".toys-loader-update-") })
     }
 
     @Test fun `install keeps a mod that exists in both mods and disabled_mods`() = withTemp { dir ->

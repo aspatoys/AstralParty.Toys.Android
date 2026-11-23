@@ -191,6 +191,24 @@ class Updates private constructor(context: Context) {
             finally { loaderBusy = false; loaderCancel = null }
         }
     }
+    /**
+     * 安卓引导只来自 App（发行 ZIP 里那份是桌面引导）。
+     *
+     * 以前「更新加载器」只部署 SDK 与模组，引导停在装机时那份：旧引导启动时会把
+     * `mods/<Id>/config.json` 改名 `.bak` 并搬回 `configs/`，新 SDK 再按默认值重建 ——
+     * 表现就是「App 里改了配置，重启游戏又变回默认」。这里把 APK 自带的引导一起交给
+     * 更新事务，SDK 与引导永远来自同一个 App 版本。
+     */
+    private fun stageBootstrap(stage: File): File {
+        val target = File(File(stage, "app-bootstrap"), "CesiumLoader.Android.Bootstrap.dll")
+        target.parentFile?.mkdirs()
+        app.assets.open("cesium/bootstrap/CesiumLoader.Android.Bootstrap.dll").use { input ->
+            target.outputStream().use { output -> input.copyTo(output) }
+        }
+        require(target.length() > 0) { "APK 内缺少安卓引导，无法保证加载器与 App 一致。" }
+        return target
+    }
+
     /** 返回 false 表示没有开始（没检查过版本，或者已有加载器操作在进行），此时不会回调 [listener]。 */
     fun updateLoader(listener: UpdateProgressListener? = null, onUpdated: () -> Unit): Boolean {
         val release = loaderRelease ?: return false
@@ -213,7 +231,8 @@ class Updates private constructor(context: Context) {
                     // 解压 + 逐个 SHA-256 是整条链路最慢的一段，按文件把进度报给面板。
                     val pkg = installer.prepare(zipFile, release.version, stage) { step(it) }
                     cancel.throwIfCancelled()
-                    withContext(NonCancellable) { installer.install(root, pkg) { step(it) } }
+                    val bootstrap = stageBootstrap(stage)
+                    withContext(NonCancellable) { installer.install(root, pkg, bootstrap = bootstrap) { step(it) } }
                 }
                 loaderStatus = buildString {
                     append("加载器 ${release.version} 已更新；请完全重启游戏。安卓变速与相机已保留。")
@@ -264,7 +283,7 @@ class Updates private constructor(context: Context) {
                     val installer = ManagedLoaderUpdate(fs)
                     val pkg = installer.prepare(localZip, expectedVersion = null, staging = File(stage, "unpacked")) { step(it) }
                     val result = withContext(NonCancellable) {
-                        installer.install(root, pkg, source = "local-import") { step(it) }
+                        installer.install(root, pkg, source = "local-import", bootstrap = stageBootstrap(stage)) { step(it) }
                     }
                     pkg to result
                 }

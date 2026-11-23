@@ -13,6 +13,16 @@ class ManagedLoaderUpdate(private val fs: LoaderFs) {
     companion object {
         val protectedMods = setOf("CesiumOverlayMod", "SpeedHackMod", "FreeCameraMod")
         private val idPattern = Regex("[A-Za-z0-9_.-]{1,128}")
+
+        /**
+         * 安卓引导的落盘位置。发行 ZIP 里那份是**桌面**引导（`bootstrap/CesiumLoader.Bootstrap.dll`），
+         * 安卓用的是 APK 自带的这一份，所以它永远由 App 提供、跟着 SDK 一起更新 —— 否则会留下
+         * 「新 SDK + 旧引导」，旧引导启动时会把模组配置搬回 `configs/`。
+         */
+        const val BOOTSTRAP_RELATIVE = "bootstrap/CesiumLoader.Android.Bootstrap.dll"
+
+        /** 安卓引导是单个小程序集，超过这个大小说明拿错了文件。 */
+        private const val BOOTSTRAP_MAX_BYTES = 4L * 1024 * 1024
         fun safePath(path: String): String {
             val value = path.replace('\\', '/')
             require(value.isNotBlank() && !value.startsWith('/') && value.none { it == ':' || it.code < 32 } && value.split('/').none { it.isEmpty() || it == "." || it == ".." }) { "加载器 ZIP 含不安全路径。" }
@@ -97,10 +107,15 @@ class ManagedLoaderUpdate(private val fs: LoaderFs) {
     private fun conflictingMods(root: String, ids: Collection<String>): List<String> =
         ids.filter { hasDll(root, "mods", it) && hasDll(root, "disabled_mods", it) }
 
+    /**
+     * 装这套载荷。[bootstrap] 是 App 自带的安卓引导：给了就与 SDK 在同一个事务里发布，
+     * 失败时连同 SDK 与模组一起回滚。不给则不动设备上的引导（只有测试与老调用方会这样）。
+     */
     fun install(
         root: String,
         pkg: Package,
         source: String = "https://github.com/${GitHubUpdates.LOADER_REPO}",
+        bootstrap: File? = null,
         progress: (String) -> Unit = {},
     ): InstallResult {
         require(pkg.files.keys.all { relative ->
@@ -140,6 +155,12 @@ class ManagedLoaderUpdate(private val fs: LoaderFs) {
             index["source"] = JsonPrimitive(source)
             index["updatedAt"] = JsonPrimitive(java.time.Instant.now().toString())
             local.writeText(JsonObject(index).toString())
+            // 安卓引导与 SDK 同源同事务：只换 SDK 会留下「新 SDK + 旧引导」，旧引导每次启动
+            // 都会把 mods/<Id>/config.json 改名 .bak 并复制回 configs/，玩家配置等于被清空。
+            if (bootstrap != null) {
+                require(bootstrap.length() in 1..BOOTSTRAP_MAX_BYTES) { "安卓引导文件大小异常。" }
+                planned[BOOTSTRAP_RELATIVE] = bootstrap
+            }
             planned["installed.json"] = local // Publish version only after all SDK/mod files have committed.
             planned.forEach { (relative, file) ->
                 val stage = "$transaction/stage/$relative"
