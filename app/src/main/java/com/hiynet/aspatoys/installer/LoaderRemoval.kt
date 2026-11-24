@@ -12,7 +12,7 @@ internal object LoaderRemoval {
         restoreOriginal()
         fs.delete(root)
         val remains = fs.exists(root)
-        check(fs.lastError == null && !remains) { "原包已恢复，但加载器文件未完全删除；保留安装备份，请重试" }
+        check(fs.lastError == null && !remains) { "原包已恢复，但加载器文件未完全删除；保留安装备份。\n" + LoaderFsWritability.explain(root) }
         cleanupLocal()
     }
 }
