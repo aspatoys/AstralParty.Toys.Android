@@ -219,6 +219,31 @@ jobs:
         shell: bash
         run: cat app/src/main/assets/cesium/loader.json
 
+      - name: Stage the managed loader payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets="app/src/main/assets/cesium"
+          files=(
+            "bootstrap/CesiumLoader.Android.Bootstrap.dll"
+            "sdk/CesiumLoader.SDK.dll"
+            "CesiumAndroidApi.dll"
+          )
+          for file in "${files[@]}"; do
+            test -f "$assets/$file" || { echo "::error::assets/cesium 里缺少 $file"; exit 1; }
+          done
+          if [ -f "$assets/loader.json" ]; then
+            files+=("loader.json")
+          fi
+          managed="cesium-loader-android-managed-${{ steps.version.outputs.name }}.zip"
+          repo_root="$PWD"
+          # 只带托管部分，不带整个 APK：下游（比如 iOS 工具）取引导 DLL / SDK 时直接下这个小包，
+          # 不用再解压 37 MB 的 APK。布局与 APK 里的 assets/cesium 一致。
+          ( cd "$assets" && zip -q -r "$repo_root/$managed" "${files[@]}" )
+          sha256sum "$managed" | awk '{print $1}' > "$managed.sha256"
+          unzip -l "$managed"
+          cat "$managed.sha256"
+
       - name: Name the APK and checksum
         shell: bash
         run: |
@@ -227,10 +252,14 @@ jobs:
           sha256sum "aspatoys-${{ steps.version.outputs.name }}.apk" | awk '{print $1}' \
             > "aspatoys-${{ steps.version.outputs.name }}.apk.sha256"
           cat "aspatoys-${{ steps.version.outputs.name }}.apk.sha256"
-          python3 tools/write-update-manifest.py --version "${{ steps.version.outputs.name }}" --apk "aspatoys-${{ steps.version.outputs.name }}.apk" --out version.json
+          python3 tools/write-update-manifest.py --version "${{ steps.version.outputs.name }}" \
+            --apk "aspatoys-${{ steps.version.outputs.name }}.apk" \
+            --managed "cesium-loader-android-managed-${{ steps.version.outputs.name }}.zip" \
+            --out version.json
           cp docs/signing/production-certificate.pem aspatoys-signing-certificate.pem
           cp docs/signing/production-public-key.pem aspatoys-signing-public-key.pem
-          ls -l aspatoys-*.apk*
+          ls -l aspatoys-*.apk* cesium-loader-android-managed-*.zip*
+          cat version.json
 
       - name: Verify signature
         if: steps.signing.outputs.signed == 'true'
@@ -253,6 +282,8 @@ jobs:
           path: |
             aspatoys-${{ steps.version.outputs.name }}.apk
             aspatoys-${{ steps.version.outputs.name }}.apk.sha256
+            cesium-loader-android-managed-${{ steps.version.outputs.name }}.zip
+            cesium-loader-android-managed-${{ steps.version.outputs.name }}.zip.sha256
             aspatoys-signing-certificate.pem
             aspatoys-signing-public-key.pem
             version.json
@@ -267,6 +298,9 @@ jobs:
           set -euo pipefail
           tag="${{ steps.version.outputs.tag }}"
           apk="aspatoys-${{ steps.version.outputs.name }}.apk"
+          managed="cesium-loader-android-managed-${{ steps.version.outputs.name }}.zip"
+          assets=("$apk" "$apk.sha256" "$managed" "$managed.sha256"
+                  "aspatoys-signing-certificate.pem" "aspatoys-signing-public-key.pem" "version.json")
           # 已存在的发行版一律不覆盖：历史上人工上传过资产，工作流后跑不能把它们替换掉。
           if gh release view "$tag" --repo "${{ github.repository }}" > /dev/null 2>&1; then
             echo "发行版 $tag 已存在，跳过创建"
@@ -275,7 +309,7 @@ jobs:
               echo "资产 $apk 已存在，保持原样"
               exit 0
             fi
-            gh release upload "$tag" "$apk" "$apk.sha256" "aspatoys-signing-certificate.pem" "aspatoys-signing-public-key.pem" "version.json" \
+            gh release upload "$tag" "${assets[@]}" \
               --repo "${{ github.repository }}"
           else
             notes_args=()
@@ -284,7 +318,7 @@ jobs:
             else
               notes_args=(--generate-notes)
             fi
-            gh release create "$tag" "$apk" "$apk.sha256" "aspatoys-signing-certificate.pem" "aspatoys-signing-public-key.pem" "version.json" \
+            gh release create "$tag" "${assets[@]}" \
               --repo "${{ github.repository }}" \
               --title "Astral Party Toys Android ${{ steps.version.outputs.name }}" \
               "${notes_args[@]}" \
