@@ -12,10 +12,10 @@
 ## 硬约束
 
 - **HybridCLR/安卓上不可用的 BCL**：不要用 `FileStream`、`FileInfo`/`DirectoryInfo`、`StreamReader`/`Writer`、`Flush(bool)`、`Assembly.Location`、`Assembly.GetType(string,bool)`、`Assembly.ManifestModule`。托管侧只用 `File.ReadAllBytes/WriteAllText/AppendAllText/Exists/Delete/Move`、`Directory.*`、`Path.*`。
-- **入口唯一**：`CesiumLoader.Android.Bootstrap.Boot.Load()` 是唯一入口，必须幂等，异常只落盘不外抛（异常逃进游戏链会卡死整局）。数据版注入的 IL 与重打包版的 `libcesium.so` 都只调它。
+- **入口唯一**：`CesiumLoader.Mobile.Bootstrap.Boot.Load()` 是唯一入口，必须幂等，异常只落盘不外抛（异常逃进游戏链会卡死整局）。数据版注入的 IL 与重打包版的 `libcesium.so` 都只调它。
 - **盘上格式只有一份定义**：`core` 里的 `CesiumLayout` / `EnabledIndex` 是唯一事实来源；C# 侧与 patcher 不得另写一套路径或字段名。
 - **`enabled.json` 只是提示**：判断启用状态读目录（`mods/` vs `disabled_mods/`），`enabled.json` 仅用于与其他实现互操作（格式见 `EnabledIndex`）。
-- **配置热重载由引导驱动**：SDK 只提供 `ModConfig.PollAllChanged()`，没人调就不会重载。`Boot` 起后台线程每 1.5 秒调一次（失败吞掉、下轮重试），App 写完 `mods/<ModId>/config.json`（停用模组写 `disabled_mods/<ModId>/config.json`）即生效。改 `Boot.cs` 后必须 `dotnet build managed/CesiumLoader.Android.Bootstrap -c Release` 并让 `syncLoaderAssets` 重新拷 DLL。
+- **配置热重载由引导驱动**：SDK 只提供 `ModConfig.PollAllChanged()`，没人调就不会重载。`Boot` 起后台线程每 1.5 秒调一次（失败吞掉、下轮重试），App 写完 `mods/<ModId>/config.json`（停用模组写 `disabled_mods/<ModId>/config.json`）即生效。改 `Boot.cs` 后必须 `dotnet build managed/CesiumLoader.Mobile.Bootstrap -c Release` 并让 `syncLoaderAssets` 重新拷 DLL。
 - **写设备文件走子进程标准输入**：宿主侧不要「落中转文件 + `cat local > remote`」——App 私有目录 `0600`/`0700`，`shell` 读不到；目标先写 `<path>.cesium-tmp` 再 `mv -f`，避免失败留下 0 字节假文件。
 - **玩家配置在模组目录里的 `config.json`**：`mods/<ModId>/config.json`（停用模组在 `disabled_mods/<ModId>/config.json`），4.0.0 起唯一位置。旧版集中目录 `configs/` 已废弃：引导启动时整目录改名 `configs.bak`（保留内容、不删除），没有任何 mod 再读它。
 - **托管产物不入库**：`CesiumLoader.SDK.dll`、`mods/*.dll` 由 `modding/msvc/` 构建产出，`payload/` 进 `.gitignore`；不要在仓库里手放 DLL。
@@ -35,7 +35,7 @@
 ```powershell
 $env:JAVA_HOME='C:\Program Files\Microsoft\jdk-21.0.13.21-hotspot'
 ..\gradlew.bat --console=plain :cesiumcore:testDebugUnitTest
-dotnet build managed/CesiumLoader.Android.Bootstrap -c Release
+dotnet build managed/CesiumLoader.Mobile.Bootstrap -c Release
 # 同步到 APK assets（SDK / 引导 / 发行版内置模组 / 注入产物）
 ..\gradlew.bat --console=plain :app:syncLoaderAssets -PcesiumReleaseZip=<发行版 zip>
 ```

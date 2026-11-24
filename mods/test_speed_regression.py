@@ -29,7 +29,7 @@ sources = [
     root / 'tests/speedregression/Stubs.cs',
     root / 'tests/speedregression/Legacy.cs',
     root / 'tests/speedregression/Program.cs',
-    root / 'CesiumAndroidApi/AndroidApi.cs',
+    root / 'CesiumLoader.Mobile.API/AndroidApi.cs',
     root / 'CesiumOverlayMod/OverlayTheme.cs',
     root / 'CesiumOverlayMod/UnitySpeedScale.cs',
     root / 'CesiumOverlayMod/AbsoluteSpeedScale.cs',

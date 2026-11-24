@@ -11,7 +11,7 @@ class BuiltinOverlayTest {
     private val speedId = BuiltinOverlay.SPEED_ID
     private val cameraId = BuiltinOverlay.CAMERA_ID
     private val assets = mapOf(
-        "cesium/CesiumAndroidApi.dll" to byteArrayOf(1, 2),
+        "cesium/CesiumLoader.Mobile.API.dll" to byteArrayOf(1, 2),
         "cesium/mods/$id/$id.dll" to byteArrayOf(3, 4),
         "cesium/mods/$id/$id.json" to "{}".toByteArray(),
         "cesium/mods/$id/licenses/MIT.txt" to "MIT".toByteArray(),
@@ -30,7 +30,7 @@ class BuiltinOverlayTest {
         fs.files["$root/sdk/CesiumLoader.SDK.dll"] = byteArrayOf(9)
         fs.files["$root/configs/SpeedHackMod.json"] = "player".toByteArray()
         overlay(fs).install(root, ThemeMode.LIGHT, true)
-        assertArrayEquals(byteArrayOf(1, 2), fs.files["$root/CesiumAndroidApi.dll"])
+        assertArrayEquals(byteArrayOf(1, 2), fs.files["$root/CesiumLoader.Mobile.API.dll"])
         assertArrayEquals(byteArrayOf(3, 4), fs.files["$root/mods/$id/$id.dll"])
         assertEquals("MIT", fs.readText("$root/mods/$id/licenses/MIT.txt"))
         assertArrayEquals(byteArrayOf(11, 12), fs.files["$root/mods/$cameraId/$cameraId.dll"])
@@ -197,7 +197,7 @@ class BuiltinOverlayTest {
         assertTrue(runCatching { incomplete.install(root, ThemeMode.DARK, true) }.isFailure)
         // Only the pre-existing SDK file: preflight must fail before any copy.
         assertEquals(1, fs.files.size)
-        assertFalse(fs.exists("$root/CesiumAndroidApi.dll"))
+        assertFalse(fs.exists("$root/CesiumLoader.Mobile.API.dll"))
         assertFalse(fs.exists("$root/mods/$id/$id.dll"))
     }
 

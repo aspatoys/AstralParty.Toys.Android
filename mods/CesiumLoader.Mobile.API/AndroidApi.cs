@@ -40,7 +40,7 @@ namespace CesiumAndroid
     }
 
     /// <summary>
-    /// Android 端开发者接口。mod 引用 CesiumAndroidApi.dll 后即可使用。
+    /// Android 端开发者接口。mod 引用 CesiumLoader.Mobile.API.dll 后即可使用。
     /// </summary>
     public static class AndroidApi
     {

@@ -34,7 +34,7 @@ if args.tools:
         response.write_text('\n'.join('"' + value + '"' for value in options), encoding='utf-8')
         subprocess.run(['dotnet', str(compiler), '@' + str(response)], check=True)
         return target
-    api = assets / 'CesiumAndroidApi.dll' if args.overlay_only else compile_mod('CesiumAndroidApi', [args.refs / 'UnityEngine.CoreModule.dll'])
+    api = assets / 'CesiumLoader.Mobile.API.dll' if args.overlay_only else compile_mod('CesiumLoader.Mobile.API', [args.refs / 'UnityEngine.CoreModule.dll'])
     overlay = compile_mod('CesiumOverlayMod', [sdk, api] + [args.refs / name for name in (
         'UnityEngine.CoreModule.dll', 'AstralParty.Runtime.dll')])
     if not ui_only:
@@ -48,7 +48,7 @@ else:
     subprocess.run(['dotnet', 'build', str(ROOT / project), '-c', 'Release', '--nologo',
                     '-p:GameRefs=' + str(args.refs.resolve()), '-p:CesiumSdkDll=' + str(sdk.resolve())], check=True)
     compiled = ROOT / 'CesiumOverlayMod/bin/Release/netstandard2.0'
-    api, overlay = compiled / 'CesiumAndroidApi.dll', compiled / 'CesiumOverlayMod.dll'
+    api, overlay = compiled / 'CesiumLoader.Mobile.API.dll', compiled / 'CesiumOverlayMod.dll'
     if not ui_only:
         speed = ROOT / 'SpeedHackMod/bin/Release/netstandard2.0/SpeedHackMod.dll'
         subprocess.run(['dotnet', 'build', str(ROOT / 'FreeCameraMod'), '-c', 'Release', '--nologo', '-p:GameRefs=' + str(args.refs.resolve()), '-p:CesiumSdkDll=' + str(sdk.resolve())], check=True)
@@ -60,7 +60,7 @@ staged = out / 'assets'
 target = staged / 'mods/CesiumOverlayMod'
 target.mkdir(parents=True, exist_ok=True)
 if not args.overlay_only:
-    shutil.copy2(api, staged / 'CesiumAndroidApi.dll')
+    shutil.copy2(api, staged / 'CesiumLoader.Mobile.API.dll')
 shutil.copy2(overlay, target / overlay.name)
 shutil.copy2(ROOT / 'CesiumOverlayMod/overlay.png', target / 'overlay.png')
 icons = target / 'icons'

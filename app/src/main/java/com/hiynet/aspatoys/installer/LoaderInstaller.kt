@@ -50,7 +50,7 @@ class LoaderInstaller(
         const val INJECTED_SHA256 = "b5ed46ddef35842d1695476ca6edfc2849f8938f22f02ddb05c608dd91ab4b2c"
 
         const val SDK_ASSET = "cesium/sdk/CesiumLoader.SDK.dll"
-        const val BOOTSTRAP_ASSET = "cesium/bootstrap/CesiumLoader.Android.Bootstrap.dll"
+        const val BOOTSTRAP_ASSET = "cesium/bootstrap/CesiumLoader.Mobile.Bootstrap.dll"
         const val MODS_ASSET_DIR = "cesium/mods"
         const val INJECTED_ASSET = "cesium/AstralParty.Runtime.injected.dll"
 
@@ -63,7 +63,7 @@ class LoaderInstaller(
         val LOADER_ROOT = "/sdcard/Android/data/$GAME_PACKAGE/files/CesiumLoader"
 
         /** 与 [com.hiynet.cesiumloader.core.CesiumLayout] 保持一致：SDK 在 sdk/，引导在 bootstrap/。 */
-        val BOOTSTRAP_REMOTE = "$LOADER_ROOT/bootstrap/CesiumLoader.Android.Bootstrap.dll"
+        val BOOTSTRAP_REMOTE = "$LOADER_ROOT/bootstrap/CesiumLoader.Mobile.Bootstrap.dll"
 
         private fun workspace(context: Context, gamePackage: String): File {
             require(AndroidPaths.isValidPackageName(gamePackage))
@@ -139,7 +139,7 @@ class LoaderInstaller(
 
     private val isChannel = gamePackage != GAME_PACKAGE
     private val loaderRoot = AndroidPaths.gameLoaderDir(gamePackage).invariantSeparatorsPath
-    private val bootstrapPath = "$loaderRoot/bootstrap/CesiumLoader.Android.Bootstrap.dll"
+    private val bootstrapPath = "$loaderRoot/bootstrap/CesiumLoader.Mobile.Bootstrap.dll"
     private val owner = if (isChannel) LoaderOwnership(gamePackage) else LoaderOwnership.default
     private val workDir: File get() = workspace(context, gamePackage).apply { mkdirs() }
 
@@ -324,7 +324,7 @@ class LoaderInstaller(
 
         for ((asset, relative) in listOf(
             SDK_ASSET to "sdk/CesiumLoader.SDK.dll",
-            BOOTSTRAP_ASSET to "bootstrap/CesiumLoader.Android.Bootstrap.dll",
+            BOOTSTRAP_ASSET to "bootstrap/CesiumLoader.Mobile.Bootstrap.dll",
         )) {
             pushAsset(asset, relative)
             log("$relative  ${File(workDir, relative).length()} B")
@@ -385,7 +385,7 @@ class LoaderInstaller(
             appendLine("  \"layout\": 2,")
             appendLine("  \"loaderPackage\": \"com.hiynet.cesiumloader.core\",")
             appendLine("  \"sdkVersion\": \"$version\",")
-            appendLine("  \"bootstrap\": \"bootstrap/CesiumLoader.Android.Bootstrap.dll\",")
+            appendLine("  \"bootstrap\": \"bootstrap/CesiumLoader.Mobile.Bootstrap.dll\",")
             appendLine("  \"sdk\": \"sdk/CesiumLoader.SDK.dll\",")
             appendLine("  \"installedAt\": \"${java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", java.util.Locale.US).format(java.util.Date())}\",")
             append("  \"builtInMods\": [")

@@ -16,7 +16,7 @@
 | 基线提交 | `a58db09`（= tag `v1.3.0`，`git merge --ff-only v1.3.0` 得来） |
 | 模组版本 | `ModManifest("Cesium Android FloatingWindow", "1.0.0", "TenkinMori/囚鱼玖", "为CesiumLoader安卓端定制的悬浮窗口")` |
 | `CesiumOverlayMod.dll` | 106,496 B，MD5 `67166E146F583F25A89137C5CBA3C8DE` |
-| `CesiumAndroidApi.dll` | 11,264 B，MD5 `DF1772CC62E91C00025D56E40777C8AB`（上游 10,240 B，因新增接口变大） |
+| `CesiumLoader.Mobile.API.dll` | 11,264 B，MD5 `DF1772CC62E91C00025D56E40777C8AB`（上游 10,240 B，因新增接口变大） |
 | `app-debug.apk` | 44,862,385 B |
 | 单元测试 | `:app:testDebugUnitTest` 255 项全部通过（25 个结果文件，0 失败） |
 
@@ -53,7 +53,7 @@
 | `mods/CesiumOverlayMod/OverlayPresentation.cs` | 151 | 页面元数据表 `OverlayPage[]`、`ModCatalog` |
 | `mods/CesiumOverlayMod/OverlayMotion.cs` | 134 | 手写补间驱动（替代 GTween）+ 缓动函数表 |
 | `mods/CesiumOverlayMod/KeyMappingPanel.cs` | 110 | 默认键表；删除手动映射编辑器 |
-| `mods/CesiumAndroidApi/AndroidApi.cs` | 91 | 新增 `ShortcutItem` + `RegisterShortcut` / `RegisterShortcutButton` |
+| `mods/CesiumLoader.Mobile.API/AndroidApi.cs` | 91 | 新增 `ShortcutItem` + `RegisterShortcut` / `RegisterShortcutButton` |
 | `mods/CesiumOverlayMod/VirtualKeyboard.cs` | 37 | `TapFrames()` 0.55 秒脉冲；输入阻塞判定改写 |
 | `mods/CesiumOverlayMod/OverlayOptions.cs` | 22 | 新增 `font` / `idle` / `idleOpacity` / `previousSpeed` / `center` |
 | `mods/CesiumOverlayMod/VirtualKeyState.cs` | 15 | 新增「按帧数按住」的 `Press(..., int frames)` 重载 |
@@ -470,9 +470,9 @@ AndroidApi.ShowNotice(visible
 
 ---
 
-## 13. 开发者接口（`CesiumAndroidApi`）
+## 13. 开发者接口（`CesiumLoader.Mobile.API`）
 
-新增（`mods/CesiumAndroidApi/AndroidApi.cs`）：
+新增（`mods/CesiumLoader.Mobile.API/AndroidApi.cs`）：
 
 ```csharp
 public sealed class ShortcutItem
@@ -523,8 +523,8 @@ py -3 mods\build.py --refs ... --sdk ...
 cmd /c "gradlew.bat :app:assembleDebug --offline -q > log 2> err"
 ```
 
-> **最大的坑**：`--overlay-only` **不拷贝 `CesiumAndroidApi.dll`**（`build.py` 里是 `if not args.overlay_only: shutil.copy2(api, ...)`）。改了 `AndroidApi.cs` 却只跑 `--overlay-only`，设备上就是旧 API DLL，游戏启动报
-> `TypeLoadException: Could not load type 'CesiumAndroid.ShortcutItem' from assembly 'CesiumAndroidApi'`，
+> **最大的坑**：`--overlay-only` **不拷贝 `CesiumLoader.Mobile.API.dll`**（`build.py` 里是 `if not args.overlay_only: shutil.copy2(api, ...)`）。改了 `AndroidApi.cs` 却只跑 `--overlay-only`，设备上就是旧 API DLL，游戏启动报
+> `TypeLoadException: Could not load type 'CesiumAndroid.ShortcutItem' from assembly 'CesiumLoader.Mobile.API'`，
 > 悬浮窗**整个消失**（`done: ok=26 failed=1`）。
 
 游戏引用集必须用 **`D:\AstralPartyGit\apa-repo\refs-ci`**（`AstralParty.Runtime.dll` 11,777,536 B），本地 `refs` 里的版本落后。

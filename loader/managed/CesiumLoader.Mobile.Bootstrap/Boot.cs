@@ -5,7 +5,7 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 
-namespace CesiumLoader.Android.Bootstrap
+namespace CesiumLoader.Mobile.Bootstrap
 {
     /// <summary>
     /// 安卓加载器的唯一托管入口。
@@ -28,7 +28,7 @@ namespace CesiumLoader.Android.Bootstrap
         private const string ConfigsFolder = "configs";
         private const string SdkFolder = "sdk";
         private const string SdkDll = "CesiumLoader.SDK.dll";
-        private const string ApiDll = "CesiumAndroidApi.dll";
+        private const string ApiDll = "CesiumLoader.Mobile.API.dll";
         private const string AndroidApiType = "CesiumAndroid.AndroidApi";
 
         private static readonly string[] Directories =
@@ -433,7 +433,7 @@ namespace CesiumLoader.Android.Bootstrap
             }
         }
 
-        /// <summary>告诉 CesiumAndroidApi 当前模组 ID，悬浮窗才能把开关归到正确的模组下。</summary>
+        /// <summary>告诉 CesiumLoader.Mobile.API 当前模组 ID，悬浮窗才能把开关归到正确的模组下。</summary>
         private static void TagCurrentMod(Type type, string dllPath)
         {
             try
@@ -443,7 +443,7 @@ namespace CesiumLoader.Android.Bootstrap
                 for (int i = 0; i < assemblies.Length; i++)
                 {
                     Assembly assembly = assemblies[i];
-                    if (assembly.GetName().Name != "CesiumAndroidApi") continue;
+                    if (assembly.GetName().Name != "CesiumLoader.Mobile.API") continue;
 
                     Type api = assembly.GetType(AndroidApiType);
                     if (api == null) continue;

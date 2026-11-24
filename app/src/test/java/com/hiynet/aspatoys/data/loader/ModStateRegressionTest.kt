@@ -121,7 +121,7 @@ class ModStateRegressionTest {
         fs.writeText("$root/sdk/CesiumLoader.SDK.dll", "sdk")
         fs.writeText("$root/mods/$overlayId/$overlayId.dll", "old")
         fs.writeText("$root/mods/$overlayId/config.json", "player")
-        val assets = mapOf("cesium/CesiumAndroidApi.dll" to "api",
+        val assets = mapOf("cesium/CesiumLoader.Mobile.API.dll" to "api",
             "cesium/mods/$overlayId/$overlayId.dll" to "new",
             "cesium/mods/$overlayId/config.json" to "default",
             "cesium/mods/${BuiltinOverlay.SPEED_ID}/${BuiltinOverlay.SPEED_ID}.dll" to "speed",

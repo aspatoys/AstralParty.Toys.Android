@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     数据版加载器的入口只有一条：热更程序集 `AstralParty.Runtime.dll` 的 `<Module>.cctor`
-    里调一次 `CesiumLoader.Android.Bootstrap.Boot::Load()`。这一步就是把那条调用写进去。
+    里调一次 `CesiumLoader.Mobile.Bootstrap.Boot::Load()`。这一步就是把那条调用写进去。
 
     流水线（每一步都校验，任何一步失败都停下并保留中间产物）：
 
@@ -73,7 +73,7 @@ New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
 
 $bundleAssets = Join-Path $scriptDir 'bundle_assets.py'
 $patcher = Join-Path $scriptDir 'CesiumPatcher\bin\Release\net8.0\cesium-patcher.exe'
-$bootstrapFileName = 'CesiumLoader.Android.Bootstrap.dll'
+$bootstrapFileName = 'CesiumLoader.Mobile.Bootstrap.dll'
 $bootstrapPath = "$LoaderRoot/bootstrap/$bootstrapFileName"
 $assetName = 'AstralParty.Runtime.dll'
 

@@ -8,12 +8,12 @@ using Mono.Cecil.Cil;
 //   inject-module-cctor <in.dll> <out.dll> [--call T::M]       给 <Module> 加静态构造，调用指定方法
 //   inject-call       <in.dll> <out.dll> --type T --method M    在既有方法首部插入调用
 //
-// 注入的目标方法默认是 CesiumLoader.Android.Bootstrap.Boot::Load。
+// 注入的目标方法默认是 CesiumLoader.Mobile.Bootstrap.Boot::Load。
 // 每次注入都会打印前后 SHA-256、类型/方法数变化，并在写完后重新读回验证。
 
-const string DefaultTargetType = "CesiumLoader.Android.Bootstrap.Boot";
+const string DefaultTargetType = "CesiumLoader.Mobile.Bootstrap.Boot";
 const string DefaultTargetMethod = "Load";
-const string TargetAssembly = "CesiumLoader.Android.Bootstrap";
+const string TargetAssembly = "CesiumLoader.Mobile.Bootstrap";
 
 if (args.Length < 2)
 {
@@ -364,7 +364,7 @@ static int Merge(string primary, string other, string output, string[] refDirs)
 
     using var merged = Read(output, refDirs);
     var module = merged.MainModule;
-    var hasBootstrap = module.Types.Any(t => t.FullName.StartsWith("CesiumLoader.Android.Bootstrap", StringComparison.Ordinal));
+    var hasBootstrap = module.Types.Any(t => t.FullName.StartsWith("CesiumLoader.Mobile.Bootstrap", StringComparison.Ordinal));
     var externalRef = module.AssemblyReferences.Any(r => r.Name == TargetAssembly);
     var stats = Describe(module);
 
@@ -402,7 +402,7 @@ static string? FindIlRepack()
 /// </summary>
 static int InjectBootstrap(string input, string output, string dllPath, string[] refDirs)
 {
-    const string bootType = "CesiumLoader.Android.Bootstrap.Boot";
+    const string bootType = "CesiumLoader.Mobile.Bootstrap.Boot";
     const string bootMethod = "Load";
 
     using var assembly = Read(input, refDirs);

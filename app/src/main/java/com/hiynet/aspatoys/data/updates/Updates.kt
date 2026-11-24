@@ -200,9 +200,9 @@ class Updates private constructor(context: Context) {
      * 更新事务，SDK 与引导永远来自同一个 App 版本。
      */
     private fun stageBootstrap(stage: File): File {
-        val target = File(File(stage, "app-bootstrap"), "CesiumLoader.Android.Bootstrap.dll")
+        val target = File(File(stage, "app-bootstrap"), "CesiumLoader.Mobile.Bootstrap.dll")
         target.parentFile?.mkdirs()
-        app.assets.open("cesium/bootstrap/CesiumLoader.Android.Bootstrap.dll").use { input ->
+        app.assets.open("cesium/bootstrap/CesiumLoader.Mobile.Bootstrap.dll").use { input ->
             target.outputStream().use { output -> input.copyTo(output) }
         }
         require(target.length() > 0) { "APK 内缺少安卓引导，无法保证加载器与 App 一致。" }

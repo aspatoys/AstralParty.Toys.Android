@@ -47,7 +47,7 @@ class BuiltinOverlay(
                 }
             }
         }
-        writeAsset("cesium/CesiumAndroidApi.dll", "$root/CesiumAndroidApi.dll")
+        writeAsset("cesium/CesiumLoader.Mobile.API.dll", "$root/CesiumLoader.Mobile.API.dll")
         for (id in listOf(ID, SPEED_ID, CAMERA_ID)) {
             val placement = store.place(
                 root = root,
