@@ -1,1 +1,19 @@
-<Project Sdk="Microsoft.NET.Sdk" />
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 程序集名必须显式写死。默认值来自项目文件名，一旦有人改目录名、
+       或者别处按 `<AssemblyName>` 覆盖，Boot 的 `GetName().Name == "CesiumLoader.Mobile.API"`
+       就会永远匹配不上 —— 表现是悬浮窗 API 整块静默失效，不报错。 -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>CesiumLoader.Mobile.API</AssemblyName>
+    <RootNamespace>CesiumAndroid</RootNamespace>
+    <Version>1.0.0</Version>
+    <Nullable>disable</Nullable>
+    <Deterministic>true</Deterministic>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+</Project>
