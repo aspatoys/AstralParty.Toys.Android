@@ -19,7 +19,7 @@ class ManagedLoaderUpdate(private val fs: LoaderFs) {
          * 安卓用的是 APK 自带的这一份，所以它永远由 App 提供、跟着 SDK 一起更新 —— 否则会留下
          * 「新 SDK + 旧引导」，旧引导启动时会把模组配置搬回 `configs/`。
          */
-        const val BOOTSTRAP_RELATIVE = "bootstrap/CesiumLoader.Android.Bootstrap.dll"
+        const val BOOTSTRAP_RELATIVE = "bootstrap/CesiumLoader.Mobile.Bootstrap.dll"
 
         /** 安卓引导是单个小程序集，超过这个大小说明拿错了文件。 */
         private const val BOOTSTRAP_MAX_BYTES = 4L * 1024 * 1024

@@ -79,7 +79,7 @@ fun resolveFile(property: String, env: String, fallback: File): File {
 }
 
 val cesiumSdk = resolveFile("cesiumSdkDll", "CESIUM_SDK_DLL", File(workspaceRoot, "modding/msvc/loader/CesiumLoader.SDK/bin/Release/netstandard2.0/CesiumLoader.SDK.dll"))
-val cesiumBootstrap = resolveFile("cesiumBootstrapDll", "CESIUM_BOOTSTRAP_DLL", File(rootProject.projectDir, "loader/managed/CesiumLoader.Android.Bootstrap/bin/Release/netstandard2.0/CesiumLoader.Android.Bootstrap.dll"))
+val cesiumBootstrap = resolveFile("cesiumBootstrapDll", "CESIUM_BOOTSTRAP_DLL", File(rootProject.projectDir, "loader/managed/CesiumLoader.Mobile.Bootstrap/bin/Release/netstandard2.0/CesiumLoader.Mobile.Bootstrap.dll"))
 val cesiumInjected = resolveFile("cesiumInjectedDll", "CESIUM_INJECTED_DLL", File(workspaceRoot, "outputs/phone/AstralParty.Runtime.injected.dll"))
 val cesiumReleaseZip = resolveFile("cesiumReleaseZip", "CESIUM_RELEASE_ZIP", File(""))
 
@@ -108,7 +108,7 @@ val syncLoaderAssets = tasks.register("syncLoaderAssets") {
         }
 
         copyOrExplain(cesiumSdk, File(assetsCesium, "sdk/CesiumLoader.SDK.dll"), "sdk")
-        copyOrExplain(cesiumBootstrap, File(assetsCesium, "bootstrap/CesiumLoader.Android.Bootstrap.dll"), "bootstrap")
+        copyOrExplain(cesiumBootstrap, File(assetsCesium, "bootstrap/CesiumLoader.Mobile.Bootstrap.dll"), "bootstrap")
         copyOrExplain(cesiumInjected, File(assetsCesium, "AstralParty.Runtime.injected.dll"), "injected")
 
         if (cesiumReleaseZip.isFile) {
@@ -170,7 +170,7 @@ val syncLoaderAssets = tasks.register("syncLoaderAssets") {
             overlayAssets.copyRecursively(assetsCesium, overwrite = true)
         }
         val buildModsHint = "先运行 python mods/build.py --refs <游戏引用程序集目录>（详见 mods/README.md）"
-        require(File(assetsCesium, "CesiumAndroidApi.dll").isFile &&
+        require(File(assetsCesium, "CesiumLoader.Mobile.API.dll").isFile &&
             File(assetsCesium, "mods/CesiumOverlayMod/CesiumOverlayMod.dll").isFile &&
             File(assetsCesium, "mods/SpeedHackMod/SpeedHackMod.dll").isFile &&
             File(assetsCesium, "mods/SpeedHackMod/SpeedHackMod.json").takeIf { it.isFile }

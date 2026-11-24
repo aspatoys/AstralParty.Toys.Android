@@ -85,7 +85,7 @@ jobs:
           dotnet-version: "8.0.x"
 
       - name: Build the managed bootstrap
-        run: dotnet build loader/managed/CesiumLoader.Android.Bootstrap -c Release --nologo
+        run: dotnet build loader/managed/CesiumLoader.Mobile.Bootstrap -c Release --nologo
 
       - name: Build the local cache editor
         run: python3 loader/tools/CacheAssemblyPatcher/build-assets.py --output app/src/main/assets/cesium/patcher
@@ -204,7 +204,7 @@ jobs:
             -PappVersionCode="${{ steps.version.outputs.code }}" \
             -PcesiumReleaseZip="${{ steps.loader.outputs.zip }}" \
             -PcesiumSdkDll="${{ steps.loader.outputs.sdk }}" \
-            -PcesiumBootstrapDll="$PWD/loader/managed/CesiumLoader.Android.Bootstrap/bin/Release/netstandard2.0/CesiumLoader.Android.Bootstrap.dll" \
+            -PcesiumBootstrapDll="$PWD/loader/managed/CesiumLoader.Mobile.Bootstrap/bin/Release/netstandard2.0/CesiumLoader.Mobile.Bootstrap.dll" \
             -PcesiumInjectedDll="$PWD/payload/AstralParty.Runtime.injected.dll" \
             :app:testDebugUnitTest "$task"
           CESIUM_BUNDLE="$PWD/app/src/main/assets/cesium/recovery/original.bundle" \
@@ -225,9 +225,9 @@ jobs:
           set -euo pipefail
           assets="app/src/main/assets/cesium"
           files=(
-            "bootstrap/CesiumLoader.Android.Bootstrap.dll"
+            "bootstrap/CesiumLoader.Mobile.Bootstrap.dll"
             "sdk/CesiumLoader.SDK.dll"
-            "CesiumAndroidApi.dll"
+            "CesiumLoader.Mobile.API.dll"
           )
           for file in "${files[@]}"; do
             test -f "$assets/$file" || { echo "::error::assets/cesium 里缺少 $file"; exit 1; }

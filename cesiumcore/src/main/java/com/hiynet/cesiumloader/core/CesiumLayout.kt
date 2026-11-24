@@ -83,9 +83,9 @@ class CesiumLayout(val root: File) {
         const val WINDOW = "window"
 
         const val SDK_DLL = "CesiumLoader.SDK.dll"
-        const val ANDROID_BOOTSTRAP_DLL = "CesiumLoader.Android.Bootstrap.dll"
+        const val ANDROID_BOOTSTRAP_DLL = "CesiumLoader.Mobile.Bootstrap.dll"
         const val LEGACY_BOOTSTRAP_DLL = "CesiumBootstrap.dll"
-        const val ANDROID_API_DLL = "CesiumAndroidApi.dll"
+        const val ANDROID_API_DLL = "CesiumLoader.Mobile.API.dll"
         const val OVERLAY_PNG = "overlay.png"
 
         const val BOOTSTRAP_LOG = "bootstrap.log"

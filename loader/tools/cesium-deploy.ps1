@@ -16,9 +16,9 @@
 .PARAMETER Payload
     本地载荷目录，至少包含：
         CesiumLoader.SDK.dll
-        CesiumLoader.Android.Bootstrap.dll
+        CesiumLoader.Mobile.Bootstrap.dll
     可选（存在就一起推）：
-        CesiumAndroidApi.dll、overlay.png、mods/、configs/、skins/、audio/、audio-schemes/
+        CesiumLoader.Mobile.API.dll、overlay.png、mods/、configs/、skins/、audio/、audio-schemes/
 
 .PARAMETER LoaderRoot
     设备上的加载器根目录。
@@ -65,7 +65,7 @@ function Invoke-Adb([string]$arguments, [switch]$AllowFail) {
 
 # ---------------------------------------------------------------- 前置检查
 
-foreach ($required in @('CesiumLoader.SDK.dll', 'CesiumLoader.Android.Bootstrap.dll')) {
+foreach ($required in @('CesiumLoader.SDK.dll', 'CesiumLoader.Mobile.Bootstrap.dll')) {
     if (-not (Test-Path (Join-Path $Payload $required))) { Fail "载荷目录缺少 $required：$Payload" }
 }
 

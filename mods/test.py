@@ -10,7 +10,7 @@ args = parser.parse_args()
 out = root.parent / 'build/overlay-tests'
 out.mkdir(parents=True, exist_ok=True)
 sources = [root / name for name in ('tests/Program.cs', 'tests/UnityStubs.cs',
-           'CesiumAndroidApi/AndroidApi.cs', 'CesiumOverlayMod/OverlayTheme.cs',
+           'CesiumLoader.Mobile.API/AndroidApi.cs', 'CesiumOverlayMod/OverlayTheme.cs',
            'CesiumOverlayMod/UnitySpeedScale.cs', 'CesiumOverlayMod/FixedStepBudget.cs')]
 options = ['-nologo', '-nostdlib+', '-target:exe', '-out:' + str(out / 'OverlayTests.dll')]
 options += ['-r:' + str(p.resolve()) for p in (args.tools / 'net8ref/ref/net8.0').glob('*.dll')]

@@ -9,9 +9,9 @@ namespace Cesium.CachePatcher;
 public static partial class AssemblyPatch
 {
     private const string AssemblyName = "AstralParty.Runtime";
-    private const string BootType = "CesiumLoader.Android.Bootstrap.Boot";
+    private const string BootType = "CesiumLoader.Mobile.Bootstrap.Boot";
     private const string HookName = "__CesiumAndroidLoad";
-    private const string DirectBridge = "CesiumLoader.Android.BootstrapBridge";
+    private const string DirectBridge = "CesiumLoader.Mobile.BootstrapBridge";
     private const string UnsupportedEdit = "CESIUM_UNSUPPORTED_RUNTIME: ";
 
     [JSExport]
@@ -202,7 +202,7 @@ public static partial class AssemblyPatch
             hook.Body.Variables.Add(persistentVar);
         }
 
-        const string bootstrapRelative = "bootstrap/CesiumLoader.Android.Bootstrap.dll";
+        const string bootstrapRelative = "bootstrap/CesiumLoader.Mobile.Bootstrap.dll";
         var il = hook.Body.GetILProcessor();
         var start = il.Create(OpCodes.Ldstr, loaderRoot);
         var loadBoot = il.Create(OpCodes.Ldloc, bootVar);

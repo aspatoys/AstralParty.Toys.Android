@@ -15,10 +15,10 @@
 ## 1. 前提
 
 ```xml
-<ProjectReference Include="../CesiumAndroidApi/CesiumAndroidApi.csproj" />
+<ProjectReference Include="../CesiumLoader.Mobile.API/CesiumLoader.Mobile.API.csproj" />
 ```
 
-`CesiumAndroidApi.dll` 与模组 DLL 一起放在加载器根的 mods 目录，由悬浮窗负责装载。接口命名空间是 `CesiumAndroid`。
+`CesiumLoader.Mobile.API.dll` 与模组 DLL 一起放在加载器根的 mods 目录，由悬浮窗负责装载。接口命名空间是 `CesiumAndroid`。
 
 所有注册都是**幂等**的：同一个 `ModId + Id` 重复注册会覆盖上一条，因此可以在 `OnUpdate()` 里放心地反复注册（注册表本身不会变长）。
 

@@ -165,7 +165,7 @@ class ManagedLoaderUpdateTest {
         val installer = ManagedLoaderUpdate(fs)
         val pkg = installer.prepare(zip(dir, payload), "3.8.7", File(dir, "stage"))
         fs.files["$root/sdk/CesiumLoader.SDK.dll"] = text("old-sdk")
-        fs.files["$root/bootstrap/CesiumLoader.Android.Bootstrap.dll"] = text("old-bootstrap")
+        fs.files["$root/bootstrap/CesiumLoader.Mobile.Bootstrap.dll"] = text("old-bootstrap")
         val appBootstrap = File(dir, "app-bootstrap.dll").apply { writeText("new-bootstrap") }
 
         installer.install(root, pkg, bootstrap = appBootstrap)
@@ -184,7 +184,7 @@ class ManagedLoaderUpdateTest {
         val installer = ManagedLoaderUpdate(fs)
         val pkg = installer.prepare(zip(dir, payload), "3.8.7", File(dir, "stage"))
         fs.files["$root/sdk/CesiumLoader.SDK.dll"] = text("old-sdk")
-        fs.files["$root/bootstrap/CesiumLoader.Android.Bootstrap.dll"] = text("old-bootstrap")
+        fs.files["$root/bootstrap/CesiumLoader.Mobile.Bootstrap.dll"] = text("old-bootstrap")
 
         installer.install(root, pkg)
 
@@ -197,7 +197,7 @@ class ManagedLoaderUpdateTest {
         val installer = ManagedLoaderUpdate(fs)
         val pkg = installer.prepare(zip(dir, payload), "3.8.7", File(dir, "stage"))
         fs.files["$root/sdk/CesiumLoader.SDK.dll"] = text("old-sdk")
-        fs.files["$root/bootstrap/CesiumLoader.Android.Bootstrap.dll"] = text("old-bootstrap")
+        fs.files["$root/bootstrap/CesiumLoader.Mobile.Bootstrap.dll"] = text("old-bootstrap")
         val appBootstrap = File(dir, "app-bootstrap.dll").apply { writeText("new-bootstrap") }
         fs.failMove = { from, _ -> from.contains("/stage/bootstrap/") }
 

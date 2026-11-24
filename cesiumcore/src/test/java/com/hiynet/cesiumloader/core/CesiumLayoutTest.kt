@@ -25,8 +25,8 @@ class CesiumLayoutTest {
         assertEquals(File(root, "logs"), layout.logs)
         assertEquals(File(root, "data"), layout.dataDir)
         assertEquals(File(File(root, "sdk"), "CesiumLoader.SDK.dll"), layout.sdkDll)
-        assertEquals(File(File(root, "bootstrap"), "CesiumLoader.Android.Bootstrap.dll"), layout.androidBootstrapDll)
-        assertEquals(File(root, "CesiumAndroidApi.dll"), layout.androidApiDll)
+        assertEquals(File(File(root, "bootstrap"), "CesiumLoader.Mobile.Bootstrap.dll"), layout.androidBootstrapDll)
+        assertEquals(File(root, "CesiumLoader.Mobile.API.dll"), layout.androidApiDll)
         assertEquals(File(root, "enabled.json"), layout.enabledIndex)
     }
 
