@@ -11,6 +11,11 @@ on:
         description: "Optional existing release tag version, without v (for example 1.1.2)"
         required: false
         type: string
+      managed_only:
+        description: "Only run the mobile-managed payload packaging job"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -26,9 +31,16 @@ env:
   RELEASE_CERT_SHA256: "7cdb0644cd2bc4370152643950dde7b8cbf99ba4f770e094e9ecb775ca392bcc"
 
 jobs:
-  build:
-    name: Build APK
+  mobile_managed:
+    name: Build Mobile Managed Payload
     runs-on: ubuntu-latest
+    outputs:
+      version_name: ${{ steps.version.outputs.name }}
+      version_code: ${{ steps.version.outputs.code }}
+      release_tag: ${{ steps.version.outputs.tag }}
+      managed_zip: cesium-loader-mobile-managed-${{ steps.version.outputs.name }}.zip
+      loader_tag: ${{ steps.loader.outputs.tag }}
+      loader_version: ${{ steps.loader.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
@@ -45,8 +57,6 @@ jobs:
             name="${requested:-${GITHUB_REF_NAME#v}}"
             [[ "$name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Invalid release version"; exit 1; }
             echo "tag=v$name" >> "$GITHUB_OUTPUT"
-            # 版本号直接决定版本码，不再混入 run_number：
-            # major.minor.patch 各段按两位拼接（1.1.2 -> 10102），保证单调递增且可复现。
             IFS='.' read -r major minor patch <<< "$name"
             code=$(printf '%d%02d%02d' "${major:-0}" "${minor:-0}" "${patch:-0}")
           else
@@ -56,6 +66,99 @@ jobs:
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "code=$code" >> "$GITHUB_OUTPUT"
           echo "version=$name / $code"
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build the managed bootstrap
+        run: dotnet build loader/managed/CesiumLoader.Mobile.Bootstrap -c Release --nologo
+
+      - name: Resolve the loader release
+        id: loader
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${LOADER_VERSION}"
+          tag="modloader-${version}"
+          gh release view "$tag" --repo "$LOADER_REPO" > /dev/null
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          mkdir -p loaderpkg
+          gh release download "$tag" --repo "$LOADER_REPO" \
+            --pattern "cesium-loader-${version}.zip" --dir loaderpkg
+          echo "10e1641348bbb977cc62bbddba65acd96011a9abfe74d3eac94d9d003382248c  loaderpkg/cesium-loader-${version}.zip" | sha256sum --check
+          unzip -q "loaderpkg/cesium-loader-${version}.zip" -d loaderpkg/unpacked
+          echo "zip=$PWD/loaderpkg/cesium-loader-${version}.zip" >> "$GITHUB_OUTPUT"
+          echo "sdk=$PWD/loaderpkg/unpacked/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" >> "$GITHUB_OUTPUT"
+          ls -l loaderpkg/unpacked/AstralParty_ModLoader/sdk
+
+      - name: Build the bundled mobile mods and API
+        shell: bash
+        env:
+          LOADER_TAG: ${{ steps.loader.outputs.tag }}
+          LOADER_SDK: ${{ steps.loader.outputs.sdk }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/overlay-game-refs
+          base="https://raw.githubusercontent.com/$LOADER_REPO/$LOADER_TAG/refs/game"
+          curl -fsSL "$base/sources.json" -o build/overlay-game-refs/sources.json
+          while IFS= read -r file; do
+            curl -fsSL "$base/$file" -o "build/overlay-game-refs/$file"
+          done < <(python3 -c "import json; print('\n'.join(json.load(open('build/overlay-game-refs/sources.json', encoding='utf-8'))['assemblies']))")
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, json
+          root = Path('build/overlay-game-refs')
+          hashes = json.loads((root / 'sources.json').read_text(encoding='utf-8'))['assemblies']
+          for name, expected in hashes.items():
+              assert hashlib.sha256((root / name).read_bytes()).hexdigest() == expected, name
+          PY
+          python3 mods/build.py --refs build/overlay-game-refs --sdk "$LOADER_SDK"
+
+      - name: Package cesium-loader-mobile-managed
+        shell: bash
+        run: |
+          set -euo pipefail
+          managed="cesium-loader-mobile-managed-${{ steps.version.outputs.name }}.zip"
+          python3 tools/stage-mobile-managed.py \
+            --loader-zip "${{ steps.loader.outputs.zip }}" \
+            --sdk "${{ steps.loader.outputs.sdk }}" \
+            --bootstrap "loader/managed/CesiumLoader.Mobile.Bootstrap/bin/Release/netstandard2.0/CesiumLoader.Mobile.Bootstrap.dll" \
+            --overlay-assets "build/builtin-overlay/assets" \
+            --repo-assets "app/src/main/assets/cesium" \
+            --out-zip "$managed"
+          unzip -l "$managed" | tail -n 30
+          cat "$managed.sha256"
+
+      - name: Upload mobile managed payload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cesium-loader-mobile-managed
+          path: |
+            cesium-loader-mobile-managed-${{ steps.version.outputs.name }}.zip
+            cesium-loader-mobile-managed-${{ steps.version.outputs.name }}.zip.sha256
+          if-no-files-found: error
+
+  build:
+    name: Build APK
+    needs: mobile_managed
+    if: ${{ inputs.managed_only != true }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_version && format('v{0}', inputs.release_version) || github.ref }}
+
+      - name: Download staged mobile managed payload
+        uses: actions/download-artifact@v4
+        with:
+          name: cesium-loader-mobile-managed
+          path: .
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -67,13 +170,10 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
-          # 运行器自带 Android SDK 与 cmdline-tools，只是 sdkmanager 不在 PATH 上，
-          # 而且 setup-android 会去装已被移除的 "tools" 包，所以这里直接找 sdkmanager。
           sdk="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           sdkmanager="$(find "$sdk" -name sdkmanager -type f | head -n 1)"
           test -n "$sdkmanager"
           yes | "$sdkmanager" --licenses > /dev/null || true
-          # 平台包名带小版本号：API 37 的包是 platforms;android-37.0
           "$sdkmanager" --install "platform-tools" "platforms;android-37.0"
           "$sdkmanager" --install "build-tools;37.0.0" || "$sdkmanager" --install "build-tools;36.0.0"
           ls "$sdk/platforms"
@@ -107,9 +207,6 @@ jobs:
           set -euo pipefail
           version="${LOADER_VERSION}"
           tag="modloader-${version}"
-          gh release view "$tag" --repo "$LOADER_REPO" > /dev/null
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
           mkdir -p loaderpkg
           gh release download "$tag" --repo "$LOADER_REPO" \
             --pattern "cesium-loader-${version}.zip" --dir loaderpkg
@@ -117,32 +214,20 @@ jobs:
           unzip -q "loaderpkg/cesium-loader-${version}.zip" -d loaderpkg/unpacked
           echo "zip=$PWD/loaderpkg/cesium-loader-${version}.zip" >> "$GITHUB_OUTPUT"
           echo "sdk=$PWD/loaderpkg/unpacked/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" >> "$GITHUB_OUTPUT"
-          ls -l loaderpkg/unpacked/AstralParty_ModLoader/sdk
-          echo "加载器 $version"
 
       - name: Build the bundled Android overlay
         shell: bash
         env:
-          LOADER_TAG: ${{ steps.loader.outputs.tag }}
+          LOADER_TAG: ${{ needs.mobile_managed.outputs.loader_tag }}
           LOADER_SDK: ${{ steps.loader.outputs.sdk }}
         run: |
           set -euo pipefail
           mkdir -p build/overlay-game-refs
           base="https://raw.githubusercontent.com/$LOADER_REPO/$LOADER_TAG/refs/game"
           curl -fsSL "$base/sources.json" -o build/overlay-game-refs/sources.json
-          # 按清单取全部程序集：卡面模组还要 UniTask 与 Google.Protobuf.Runtime，
-          # 只取两个核心程序集会让 CardSkinMod 编译失败。
           while IFS= read -r file; do
             curl -fsSL "$base/$file" -o "build/overlay-game-refs/$file"
           done < <(python3 -c "import json; print('\n'.join(json.load(open('build/overlay-game-refs/sources.json', encoding='utf-8'))['assemblies']))")
-          python3 - <<'PY'
-          from pathlib import Path
-          import hashlib, json
-          root = Path('build/overlay-game-refs')
-          hashes = json.loads((root / 'sources.json').read_text(encoding='utf-8'))['assemblies']
-          for name, expected in hashes.items():
-              assert hashlib.sha256((root / name).read_bytes()).hexdigest() == expected, name
-          PY
           python3 mods/build.py --refs build/overlay-game-refs --sdk "$LOADER_SDK"
 
       - name: Fetch the injected game assembly
@@ -200,8 +285,8 @@ jobs:
           fi
           ./gradlew --no-daemon --console=plain \
             --no-configuration-cache \
-            -PappVersionName="${{ steps.version.outputs.name }}" \
-            -PappVersionCode="${{ steps.version.outputs.code }}" \
+            -PappVersionName="${{ needs.mobile_managed.outputs.version_name }}" \
+            -PappVersionCode="${{ needs.mobile_managed.outputs.version_code }}" \
             -PcesiumReleaseZip="${{ steps.loader.outputs.zip }}" \
             -PcesiumSdkDll="${{ steps.loader.outputs.sdk }}" \
             -PcesiumBootstrapDll="$PWD/loader/managed/CesiumLoader.Mobile.Bootstrap/bin/Release/netstandard2.0/CesiumLoader.Mobile.Bootstrap.dll" \
@@ -215,50 +300,21 @@ jobs:
             ./gradlew --no-daemon --console=plain --no-configuration-cache :cesiumcore:testDebugUnitTest
           echo "out=$out" >> "$GITHUB_ENV"
 
-      - name: Show bundled loader version
-        shell: bash
-        run: cat app/src/main/assets/cesium/loader.json
-
-      - name: Stage the managed loader payload
+      - name: Name the APK and manifest
         shell: bash
         run: |
           set -euo pipefail
-          assets="app/src/main/assets/cesium"
-          files=(
-            "bootstrap/CesiumLoader.Mobile.Bootstrap.dll"
-            "sdk/CesiumLoader.SDK.dll"
-            "CesiumLoader.Mobile.API.dll"
-          )
-          for file in "${files[@]}"; do
-            test -f "$assets/$file" || { echo "::error::assets/cesium 里缺少 $file"; exit 1; }
-          done
-          if [ -f "$assets/loader.json" ]; then
-            files+=("loader.json")
-          fi
-          managed="cesium-loader-android-managed-${{ steps.version.outputs.name }}.zip"
-          repo_root="$PWD"
-          # 只带托管部分，不带整个 APK：下游（比如 iOS 工具）取引导 DLL / SDK 时直接下这个小包，
-          # 不用再解压 37 MB 的 APK。布局与 APK 里的 assets/cesium 一致。
-          ( cd "$assets" && zip -q -r "$repo_root/$managed" "${files[@]}" )
-          sha256sum "$managed" | awk '{print $1}' > "$managed.sha256"
-          unzip -l "$managed"
-          cat "$managed.sha256"
-
-      - name: Name the APK and checksum
-        shell: bash
-        run: |
-          set -euo pipefail
-          cp "$out" "aspatoys-${{ steps.version.outputs.name }}.apk"
-          sha256sum "aspatoys-${{ steps.version.outputs.name }}.apk" | awk '{print $1}' \
-            > "aspatoys-${{ steps.version.outputs.name }}.apk.sha256"
-          cat "aspatoys-${{ steps.version.outputs.name }}.apk.sha256"
-          python3 tools/write-update-manifest.py --version "${{ steps.version.outputs.name }}" \
-            --apk "aspatoys-${{ steps.version.outputs.name }}.apk" \
-            --managed "cesium-loader-android-managed-${{ steps.version.outputs.name }}.zip" \
+          version="${{ needs.mobile_managed.outputs.version_name }}"
+          managed="${{ needs.mobile_managed.outputs.managed_zip }}"
+          cp "$out" "aspatoys-${version}.apk"
+          sha256sum "aspatoys-${version}.apk" | awk '{print $1}' > "aspatoys-${version}.apk.sha256"
+          python3 tools/write-update-manifest.py --version "$version" \
+            --apk "aspatoys-${version}.apk" \
+            --managed "$managed" \
             --out version.json
           cp docs/signing/production-certificate.pem aspatoys-signing-certificate.pem
           cp docs/signing/production-public-key.pem aspatoys-signing-public-key.pem
-          ls -l aspatoys-*.apk* cesium-loader-android-managed-*.zip*
+          ls -l aspatoys-*.apk* cesium-loader-mobile-managed-*.zip*
           cat version.json
 
       - name: Verify signature
@@ -268,7 +324,7 @@ jobs:
           set -euo pipefail
           sdk="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           apksigner="$(find "$sdk" -name apksigner -type f | sort | tail -n 1)"
-          "$apksigner" verify --print-certs "aspatoys-${{ steps.version.outputs.name }}.apk" | tee "$RUNNER_TEMP/apk-certificate.txt"
+          "$apksigner" verify --print-certs "aspatoys-${{ needs.mobile_managed.outputs.version_name }}.apk" | tee "$RUNNER_TEMP/apk-certificate.txt"
           actual="$(sed -n 's/^.*certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-certificate.txt" | tr '[:upper:]' '[:lower:]' | sort -u)"
           test "$actual" = "$RELEASE_CERT_SHA256" || {
             echo "::error::APK 证书与 1.1.2 起固定使用的发行证书不一致，拒绝发布。"
@@ -278,12 +334,12 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: aspatoys-${{ steps.version.outputs.name }}
+          name: aspatoys-${{ needs.mobile_managed.outputs.version_name }}
           path: |
-            aspatoys-${{ steps.version.outputs.name }}.apk
-            aspatoys-${{ steps.version.outputs.name }}.apk.sha256
-            cesium-loader-android-managed-${{ steps.version.outputs.name }}.zip
-            cesium-loader-android-managed-${{ steps.version.outputs.name }}.zip.sha256
+            aspatoys-${{ needs.mobile_managed.outputs.version_name }}.apk
+            aspatoys-${{ needs.mobile_managed.outputs.version_name }}.apk.sha256
+            ${{ needs.mobile_managed.outputs.managed_zip }}
+            ${{ needs.mobile_managed.outputs.managed_zip }}.sha256
             aspatoys-signing-certificate.pem
             aspatoys-signing-public-key.pem
             version.json
@@ -296,9 +352,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="${{ steps.version.outputs.tag }}"
-          apk="aspatoys-${{ steps.version.outputs.name }}.apk"
-          managed="cesium-loader-android-managed-${{ steps.version.outputs.name }}.zip"
+          version="${{ needs.mobile_managed.outputs.version_name }}"
+          tag="${{ needs.mobile_managed.outputs.release_tag }}"
+          apk="aspatoys-${version}.apk"
+          managed="${{ needs.mobile_managed.outputs.managed_zip }}"
           assets=("$apk" "$apk.sha256" "$managed" "$managed.sha256"
                   "aspatoys-signing-certificate.pem" "aspatoys-signing-public-key.pem" "version.json")
           # 已存在的发行版一律不覆盖：历史上人工上传过资产，工作流后跑不能把它们替换掉。
@@ -309,18 +366,17 @@ jobs:
               echo "资产 $apk 已存在，保持原样"
               exit 0
             fi
-            gh release upload "$tag" "${assets[@]}" \
-              --repo "${{ github.repository }}"
+            gh release upload "$tag" "${assets[@]}" --repo "${{ github.repository }}"
           else
             notes_args=()
-            if [ -f "docs/release-notes/${{ steps.version.outputs.name }}.md" ]; then
-              notes_args=(--notes-file "docs/release-notes/${{ steps.version.outputs.name }}.md")
+            if [ -f "docs/release-notes/${version}.md" ]; then
+              notes_args=(--notes-file "docs/release-notes/${version}.md")
             else
               notes_args=(--generate-notes)
             fi
             gh release create "$tag" "${assets[@]}" \
               --repo "${{ github.repository }}" \
-              --title "Astral Party Toys Android ${{ steps.version.outputs.name }}" \
+              --title "Astral Party Toys Android ${version}" \
               "${notes_args[@]}" \
               --verify-tag \
               --latest

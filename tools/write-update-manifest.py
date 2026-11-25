@@ -39,7 +39,7 @@ manifest = {
     'packages': {'androidApk': package(name, args.apk)},
 }
 if args.managed is not None:
-    managed_name = f'cesium-loader-android-managed-{args.version}.zip'
+    managed_name = f'cesium-loader-mobile-managed-{args.version}.zip'
     if args.managed.name != managed_name:
         raise SystemExit(f'Expected managed payload filename {managed_name}.')
     manifest['packages']['loaderManaged'] = package(managed_name, args.managed)
