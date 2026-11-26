@@ -92,5 +92,5 @@ group=<base64(name)>|<comma-separated-mod-ids>
 ## 实现约束
 
 - 未修改 SDK、安卓专用变速 DLL、自由相机 DLL 或其他 Win 模组 DLL。变速按钮统一走 `SpeedPanel.Choose` → `SpeedResumeState.Choose` → `LocalSpeed.Choose`，不引入第二个每帧写倍率的控制器。
-- 面板与入口的圆角是 CPU 侧 SDF 栅格化成纹理再用 `GLoader` 拉伸，不用 `GGraph.DrawRoundRect`：后者走三角形网格栅格化，无边缘过滤，1.5× 缩放下圆角有明显锯齿。纹理按圆角占总边长的比例做缓存键（动画中）与像素尺寸做键（静置时），细节见 `mods/CesiumOverlayMod/OverlaySkin.cs` 与 `OverlayRaster.cs` 的文件头注释。
-- 动画中纹理只在圆角形状真正变化时重烘焙，其余帧纯拉伸；动画结束后静置 0.12 秒再做一次原生分辨率烘焙，避免把最贵的一次上传压在动画收尾那一帧。
+- 面板与入口的圆角是 CPU 侧 SDF 栅格化成**一整块**纹理，不用 `GGraph.DrawRoundRect`：后者走三角形网格栅格化，无边缘过滤，1.5× 缩放下圆角有明显锯齿。也不再把形状切成四个角片拼贴——切片的切线处会留下发丝级接缝，动画中尤其明显。
+- 整块纹理按「即将绘制出来的尺寸」烘焙，一次烘焙复用到盒子超出 15%（1.15 倍）才重烘，所以一段展开动画只重烘十来次而不是每帧一次；静置时再按 1 纹理像素 = 1 屏幕像素精确重烘一次。圆角半径与盒子取自同一时刻，弧线在纹理空间里是正圆，即使纹理被非等比拉伸也不会变成椭圆。细节见 `mods/CesiumOverlayMod/OverlaySkin.cs` 与 `OverlayRaster.cs` 的文件头注释。

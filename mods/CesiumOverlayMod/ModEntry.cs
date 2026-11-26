@@ -13,7 +13,7 @@ using FairyGUI;
 using FairyGUI.Utils;
 using UnityEngine;
 
-[assembly: ModManifest("Cesium Android FloatingWindow", "1.0.0", "TenkinMori/囚鱼玖", "为CesiumLoader安卓端定制的悬浮窗口", Permissions = ModPermission.ReadGameState | ModPermission.UI | ModPermission.FileWrite | ModPermission.SpeedHack)]
+[assembly: ModManifest("Cesium Android FloatingWindow", "1.1.0", "TenkinMori/囚鱼玖", "为CesiumLoader安卓端定制的悬浮窗口", Permissions = ModPermission.ReadGameState | ModPermission.UI | ModPermission.FileWrite | ModPermission.SpeedHack)]
 namespace CesiumOverlayMod
 {
     public static class ModEntry
@@ -49,16 +49,14 @@ namespace CesiumOverlayMod
         private string lastNotice;
         private float noticeAt;
         private bool renderPending;
-        /// <summary>Set when a geometry setting changed; the shell is rebuilt on the next open.</summary>
-        private bool rebuildPending;
         /// <summary>Bypasses the finger-down guard for renders that must land immediately.</summary>
         private bool forceRender;
+        /// <summary>Row the blob sat on before expanding; collapsing puts it back there.</summary>
+        private float restoreCY;
         /// <summary>Smoothed blob alpha so the idle fade does not pop.</summary>
         private float blobAlpha = 1f;
         /// <summary>Last time the user touched or expanded the shell, driving the idle fade.</summary>
         private float lastTouched;
-        /// <summary>When the shell last went still; the crisp skin bake waits a beat after this.</summary>
-        private float settledAt;
 
         /// <summary>How long a notice stays on screen after the last change, in seconds.</summary>
         private const float NoticeSeconds = 4f;
@@ -74,7 +72,7 @@ namespace CesiumOverlayMod
         private bool Compact => Mathf.Min(width, height) <= 1200f;
 
         public override string Name => "Cesium Android FloatingWindow";
-        public override string Version => "1.0.0";
+        public override string Version => "1.1.0";
 
         public override void OnLoad() { SpeedPanel.BeginSession(); }
 
@@ -127,15 +125,6 @@ namespace CesiumOverlayMod
             {
                 renderPending = false;
                 Render();
-            }
-
-            // A geometry setting changed while the panel was open. Rebuilding then stalls the frame
-            // the user is looking at and the new size is invisible until they reopen anyway, so the
-            // rebuild waits until the shell is back to the idle blob.
-            if (rebuildPending && !FingerDown && mode == ShellMode.Idle)
-            {
-                rebuildPending = false;
-                Build();
             }
 
             // Poll while the shell is open at all, not just on a detail page: page rows carry live
@@ -204,6 +193,10 @@ namespace CesiumOverlayMod
             R = S * .30f;
             PAD = Px(16); LOGO_B = Px(56); GAP1 = Px(18); NAV = Px(56); NAV_GAP = Px(8);
             Wbar = Mathf.Max(S, Px(96));
+            PGAP = Px(10);
+            // Set before Hbar is clamped below: the clamp used last frame's margin, which let the
+            // bar overflow the screen edge for one build.
+            MARGIN = Px(12);
             // One row per page plus the logo/padding; six entries need visibly more room than four.
             Hbar = PAD + LOGO_B + GAP1 + OverlayPresentation.Pages.Length * NAV
                 + (OverlayPresentation.Pages.Length - 1) * NAV_GAP + PAD;
@@ -212,7 +205,6 @@ namespace CesiumOverlayMod
             Hbar = Mathf.Min(Hbar, height - 2 * MARGIN);
             Rbar = Px(28);
             Wpanel = Mathf.Min(Px(400), width - Wbar - Px(36));
-            PGAP = Px(10); MARGIN = Px(12);
 
             // Remembered position wins over the default, so the second open lands where the user
             // left it; the window is rebuilt on every resolution/theme change and must not drift.
@@ -247,8 +239,8 @@ namespace CesiumOverlayMod
             blob = new GComponent { name = "CesiumAndroid_Avatar", opaque = true };
             root.AddChild(blob);
 
-            // Anti-aliased rounded rectangle without per-frame texture uploads: OverlaySkin draws
-            // the straight edges with plain GGraph rects and bakes only the four corner arcs.
+            // Anti-aliased rounded rectangle: one seamless CPU-baked texture, re-baked only when
+            // the box outgrows it by 15% and once more at native resolution when it comes to rest.
             blobSkin = new OverlaySkin(blob, "overlay.blob.skin");
 
             logo = new GLoader { name = "overlay.logo", touchable = false, fill = FillType.ScaleFree };
@@ -412,39 +404,18 @@ namespace CesiumOverlayMod
         }
 
         /// <summary>
-        /// True while no motion is in flight and the shell is not being dragged, i.e. the shape
-        /// the player is actually looking at. The skins use it to switch from the cheap animated
-        /// bake to a one-texture-pixel-per-screen-pixel bake, which is what keeps corners crisp.
-        /// <para>
-        /// The crisp bake costs a full-resolution sweep, so it waits a fraction of a second after
-        /// the motion stops instead of landing on the very frame the animation ends — that single
-        /// heavy frame was what made collapsing feel like a stutter.
-        /// </para>
-        /// </summary>
-        private bool Settled
-        {
-            get
-            {
-                if (dragging || mode == ShellMode.Busy) { settledAt = 0f; return false; }
-                if (!motion.Idle) { settledAt = 0f; return false; }
-                if (settledAt <= 0f) settledAt = Time.realtimeSinceStartup;
-                return Time.realtimeSinceStartup - settledAt >= .12f;
-            }
-        }
-
-        /// <summary>
-        /// Paints one rounded surface through its skin: a single seamless fill, no stroke.
+        /// Paints one rounded surface through its skin: a flat fill, no stroke.
         ///
-        /// A baked outline became thick and blurry once the texture was downscaled, and the user
-        /// asked for no border at all, so elevation is carried purely by the tonal surface colour.
-        /// The fill is baked at a uniform downscale preserving the live aspect ratio, so the stretch
-        /// <c>GLoader</c> applies can never turn an arc into an ellipse.
+        /// A baked outline became thick and blurry once it was resampled, and the user asked for
+        /// no border at all, so elevation is carried purely by the tonal surface colour. The skin
+        /// bakes one seamless texture at roughly the drawn size, so this call is cheap enough to
+        /// run on every frame of an animation; the settled flag merely asks for the exact bake.
         /// </summary>
         private void PaintSurface(OverlaySkin skin, float w, float h, float tl, float tr, float bl, float br, Color fill)
         {
             if (skin == null) return;
             skin.Paint(Mathf.Max(1f, w), Mathf.Max(1f, h), Mathf.Max(0f, tl), Mathf.Max(0f, tr),
-                Mathf.Max(0f, bl), Mathf.Max(0f, br), fill, Settled);
+                Mathf.Max(0f, bl), Mathf.Max(0f, br), fill, motion.Idle);
         }
 
         private void PaintChrome()
@@ -562,11 +533,12 @@ namespace CesiumOverlayMod
             if (mode != ShellMode.Idle) return;
             mode = ShellMode.Busy;
             lastTouched = Time.realtimeSinceStartup;
-            // Phones always expand around the screen centre so both edges land identically;
-            // tablets keep the remembered row and only clamp it into view.
-            float cyTarget = Compact
-                ? height / 2f
-                : Mathf.Clamp(vCY, MARGIN + Hbar / 2f, Mathf.Max(MARGIN + Hbar / 2f, height - MARGIN - Hbar / 2f));
+            // The bar is taller than the blob on every screen, so it has to move to make room.
+            // Remember the row the user pressed and centre the bar instead: centring on tablets too
+            // keeps the remember/restore pair symmetrical, and the blob returns to [restoreCY] on
+            // collapse, which is the row it was opened from.
+            restoreCY = vCY;
+            float cyTarget = height / 2f;
             // Long, decelerating moves read as one continuous stretch instead of three separate
             // properties arriving at different times; the height trails the width on purpose.
             motion.To(vW, Wbar, .34f, OverlayEase.QuartOut, k => { vW = k; vX = edge == "left" ? 0f : width - k; });
@@ -589,7 +561,11 @@ namespace CesiumOverlayMod
             if (mode != ShellMode.Expanded && mode != ShellMode.Busy) return;
             mode = ShellMode.Busy;
             openMod = null; openModPage = -1;
-            float cyTarget = Mathf.Clamp(vCY, MARGIN + S / 2f, Mathf.Max(MARGIN + S / 2f, height - MARGIN - S / 2f));
+            // Expand() centres the bar, so collapsing has to undo that move or the blob ends up
+            // somewhere the user never put it. Restore the remembered row (a rebuild can start from
+            // the expanded state, in which case [restoreCY] is unset and the current row is used).
+            float cyTarget = Mathf.Clamp(restoreCY > 0f ? restoreCY : vCY,
+                MARGIN + S / 2f, Mathf.Max(MARGIN + S / 2f, height - MARGIN - S / 2f));
             motion.To(panelAlpha, 0f, .12f, OverlayEase.CubicIn, k => panelAlpha = k);
             motion.To(backdropAlpha, 0f, .24f, OverlayEase.CubicIn, k => backdropAlpha = k);
             motion.To(navAlpha, 0f, .10f, OverlayEase.Linear, k => navAlpha = k);

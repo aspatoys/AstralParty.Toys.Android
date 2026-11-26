@@ -319,8 +319,14 @@ namespace KeyMappingTests
             Time.frameCount = 11;
             Assert.True(kb.GetKeyDown(KeyCode.H), "virtual tap GetKeyDown H at frame+1");
             Assert.True(kb.GetKey(KeyCode.H), "virtual tap GetKey H at frame+1");
+            // A tap is not one frame: TapFrames() holds the chord for ~0.55s so mods that poll
+            // GetKey in "hold to act" mode still react. At 1/60 that is 33 frames.
             Time.frameCount = 12;
-            Assert.True(kb.GetKeyUp(KeyCode.H), "virtual tap GetKeyUp H at frame+2");
+            Assert.True(kb.GetKey(KeyCode.H), "virtual tap still Held at frame+2");
+            Time.frameCount = 42;
+            Assert.True(kb.GetKey(KeyCode.H), "virtual tap still Held at frame+32");
+            Time.frameCount = 43;
+            Assert.True(kb.GetKeyUp(KeyCode.H), "virtual tap GetKeyUp after TapFrames");
             Assert.False(kb.GetKey(KeyCode.H), "virtual tap not Held after expiry");
 
             // 3. Virtual key hold: Send hold, held stays, Release → Up
@@ -347,12 +353,17 @@ namespace KeyMappingTests
             Assert.True(kb.GetKeyDown(KeyCode.T), "merge: GetKeyDown T (physical+virtual)");
             Assert.True(kb.GetKey(KeyCode.T), "merge: GetKey T");
             Time.frameCount = 62;
-            // Virtual expires but physical still held — no Up
+            // Physical still held and the virtual pulse is still running — no Up yet.
             Assert.False(kb.GetKeyUp(KeyCode.T), "merge: no Up while physical still Held");
             Assert.True(kb.GetKey(KeyCode.T), "merge: still Held by physical");
             fake.SimulatePhysicalUp(KeyCode.T);
             Time.frameCount = 63;
-            Assert.True(kb.GetKeyUp(KeyCode.T), "merge: Up after physical release");
+            // The virtual chord keeps the key down on its own until TapFrames() runs out.
+            Assert.False(kb.GetKeyUp(KeyCode.T), "merge: no Up while virtual pulse still Held");
+            Assert.True(kb.GetKey(KeyCode.T), "merge: still Held by virtual pulse");
+            Time.frameCount = 94; // 60 + TapFrames(33) + 1
+            Assert.True(kb.GetKeyUp(KeyCode.T), "merge: Up after both expired");
+            Assert.False(kb.GetKey(KeyCode.T), "merge: not Held after both expired");
 
             // 5. Blocked clear: when Application.isFocused=false, state clears
             fake.ClearPhysical();
@@ -380,7 +391,9 @@ namespace KeyMappingTests
             Assert.False(kb.GetKey(KeyCode.H), "GTextInput focus: state cleared");
             FairyGUI.GRoot.inst = null; // restore
 
-            // 7. IsKeyboardCaptured blocks
+            // 7. IsKeyboardCaptured is NOT a blocking condition: the SDK sets it while the
+            //    soft keyboard is up, which is also when the mapping buttons are pressed. Only
+            //    focus loss and GTextInput focus block (see VirtualKeyboard.AcceptsKeys).
             fake.ClearPhysical();
             Time.frameCount = 90;
             kb.Send("test:cap", "H", true);
@@ -388,11 +401,15 @@ namespace KeyMappingTests
             Assert.True(kb.GetKey(KeyCode.H), "pre-capture: Held");
             InputService.IsKeyboardCaptured = true;
             Time.frameCount = 92;
-            kb.Tick();
-            Assert.False(kb.GetKey(KeyCode.H), "IsKeyboardCaptured: state cleared");
+            Assert.True(kb.GetKey(KeyCode.H), "IsKeyboardCaptured: synthetic key still Held");
             InputService.IsKeyboardCaptured = false; // restore
+            kb.Send("test:cap", "H", true);          // release
+            Time.frameCount = 93;
+            Assert.False(kb.GetKey(KeyCode.H), "capture case: released");
 
-            // 8. ShouldBlockGameInput blocks
+            // 8. ShouldBlockGameInput is deliberately NOT consulted either: it is true whenever
+            //    the overlay itself is on screen, which is exactly when a mapping is pressed.
+            //    Including it made every mapping a silent no-op.
             fake.ClearPhysical();
             Time.frameCount = 100;
             kb.Send("test:ubi", "H", true);
@@ -400,9 +417,11 @@ namespace KeyMappingTests
             Assert.True(kb.GetKey(KeyCode.H), "pre-ubi: Held");
             UiService.ShouldBlockGameInput = true;
             Time.frameCount = 102;
-            kb.Tick();
-            Assert.False(kb.GetKey(KeyCode.H), "ShouldBlockGameInput: state cleared");
+            Assert.True(kb.GetKey(KeyCode.H), "ShouldBlockGameInput: synthetic key still Held");
             UiService.ShouldBlockGameInput = false; // restore
+            kb.Send("test:ubi", "H", true);         // release
+            Time.frameCount = 103;
+            Assert.False(kb.GetKey(KeyCode.H), "ubi case: released");
 
             // 9. Send while Blocked throws
             Application.isFocused = false;
