@@ -30,8 +30,8 @@
 
 | 文件 | 行数 | 作用 |
 | --- | --- | --- |
-| `mods/CesiumOverlayMod/OverlayRaster.cs` | 156 | CPU 侧 SDF 抗锯齿圆角矩形栅格化器，输出 RGBA32 字节数组 + `NTexture` |
-| `mods/CesiumOverlayMod/OverlaySkin.cs` | 118 | 把一整块圆角面烘焙成单张纹理，两级烘焙（动画 / 静置） |
+| `mods/CesiumOverlayMod/OverlayRaster.cs` | 156 | CPU 侧 SDF 抗锯齿圆角矩形栅格化器，输出 RGBA32 字节数组 + `NTexture`（1.1.0 重修了按行实心复制的边界判定，见 §17） |
+| `mods/CesiumOverlayMod/OverlaySkin.cs` | 118 | 把一整块圆角面烘焙成单张纹理；1.1.0 起改为「按即将绘制的尺寸烘焙 + 15% 复用到极限」，不再有两级 cap |
 | `mods/CesiumOverlayMod/icons/*.png` | 10 | Material Symbols 图标：`apps` `speed` `tune` `settings` `terminal` `info` `home` `article` `chevron_right` `close` |
 | `app/.../ui/theme/OverlayPalette.kt` | — | 导出浅/深两套 Material 3 色板为 `light.role=#AARRGGBB` 文本 |
 | `docs/overlay-shortcuts.md` | 193 | 快捷项开发接口技术文档 |
@@ -572,7 +572,7 @@ $adb = "D:\Android\sdk\platform-tools\adb.exe"   # 不在 PATH
 7. **`GRoot.inst` 没有 `onTouchBegin/Move/End`**，全屏点击捕获要自己加 `opaque = true` 的全屏 `GComponent`。
 8. **`BodyAlive`**：`Render()` 里碰 `body.visible` 前必须判 `body != null && !body.isDisposed && body.parent != null`，否则每帧 NRE。
 9. **手指按下时不重建节点树**（`FingerDown` / `renderPending`），否则会销毁正被按的按钮，点击丢失。
-10. **几何类设置（字号/统一大小）不能在展开时重建**，`rebuildPending` 只在 `mode == ShellMode.Idle` 时执行 `Build()`。
+10. **字号只影响面板内文字，不要顺手重建外壳**。1.0.0 里字号变更会置 `rebuildPending` 并在 `Idle` 时整棵 `Build()`，导致悬浮球纹理重烘焙、闪一下；1.1.0 已删除该机制，字号直接写配置即可。
 11. **`SelectPage` 的短路条件必须带 `openModPage < 0`**（`if (page == index && openModPage < 0) return;`）。早期只比 `index`，导致详情页的返回按钮（回到同一个 page）直接 return，返回键失效。
 12. **`Collapse()` 不能重置 `page`**，否则每次重开都回「功能」页。
 13. **改含中文的源码不能用 `edit` 工具**（匹配会失败），Windows 上 `read` 也会把 UTF-8 中文解成乱码；用 `py -3` + `io.open(..., encoding='utf-8', newline='')` 脚本读写。
@@ -592,7 +592,7 @@ $adb = "D:\Android\sdk\platform-tools\adb.exe"   # 不在 PATH
 - 「波次预告」「队友战绩面板」显示真实运行时状态（紫色「开」）
 - 「收起 → 重开」保留原页面（不再跳回「功能」页）
 - 「变速」页：1.0x 读数、±0.5x、五档预设、「恢复倍速 1.5x」
-- 圆角在动画中无锯齿、收起无卡顿（两级烘焙 + 0.12s 延迟）
+- 圆角在动画中无锯齿、收起无卡顿（1.1.0 起为整块按尺寸烘焙，见 §17）
 
 ### 尚未验证 / 已知遗留
 
@@ -605,3 +605,64 @@ $adb = "D:\Android\sdk\platform-tools\adb.exe"   # 不在 PATH
 - `ModCatalog.Functions` / `IsFunction` 只被 `VisibleMods` 用，随之一起变死代码。
 - 设置页的「分组」区还展示分组名与模组数量，但功能页已不按分组显示——文案需要再斟酌。
 - 改动**尚未提交 git**。
+
+---
+
+## 17. 1.1.0 修订：圆角、闪一下、位置还原、配置页筛选
+
+1.0.0 交付后用户报了五个问题，1.1.0 全部修掉。本节记录根因，避免以后又改回去。
+
+### 17.1 圆角发糊 / 出现接缝（G9、G11）
+
+1.0.0 的 `OverlaySkin` 用两级烘焙：动画中把整块形状烘到最长边 192 px 的纹理上，再由 `GLoader` 拉伸到实际尺寸；静置 0.12 秒后再按原生分辨率重烘一次。问题是展开动画里 400 x 480 的盒子从 192 px 纹理放大 2.5 倍，而且宽高动画速率不同，**圆弧被非等比拉成椭圆并糊掉**。
+
+中间试过九宫格（四个角片 + 五个实心条），但角片与直条的切线处会留下发丝级接缝，动画中尤其明显——这是用户明确否决的方案（约束 C2），不要再回去。
+
+1.1.0 的做法（`OverlaySkin.Paint`）：
+
+- 按**即将绘制的尺寸**烘焙（上限 `MaxSide = 1600`），不设「动画档」。
+- 一次烘焙持续复用，直到盒子在任一轴超出 `GrowTolerance = 1.15f` 才重烘。盒子是分步长大的，所以一段 0.34 秒的展开动画只重烘十来次，而不是每帧一次。
+- 圆角半径取同一时刻的盒子尺寸并按 `sx/sy` 换算到纹理空间，**弧线在纹理里始终是正圆**，即使纹理被拉伸也不变形。
+- 静置（`settled`）时若像素尺寸或半径有偏差，按 1 纹理像素 = 1 屏幕像素精确重烘一次。
+
+### 17.2 光栅器的按行实心复制缺陷
+
+`OverlayRaster.SolidStart` 原来用 `0` 同时表示「这个角没有圆角、整行实心」和「这一行找不到可整块复制的起点」。结果顶行/底行的实心复制从第 0 列一路盖到整行，把圆弧抹掉了，表现为首行与末行整行填满、圆角只从第二行才开始。
+
+现在改成归一化 `reach`：`reach = 1` 表示整行实心，`reach = 0` 表示没有实心部分，两者不再混淆。同时修正了距离场——只有 `qx > 0 && qy > 0`（真正落在角区域）时才做椭圆归一化，平直边用盒距离减去**对应那条边**的半径，否则两轴半径不同时会啃掉直边一条细缝。
+
+回归测试在 `build/rastcheck`（28 条断言，含首行/末行透空、圆弧逐行内移、平直边相接）。
+
+### 17.3 改字号后图标闪一下（G5）
+
+1.0.0 里字号按钮的回调是 `Run(() => { SaveFontScale(value); RequestRebuild(); })`。字号只乘在 `Font()` 上，完全不影响外壳几何，但 `RequestRebuild()` 置位 `rebuildPending`，`OnUpdate` 在 `mode == ShellMode.Idle` 时执行整棵 `Build()`，重烘悬浮球纹理并重绘——那就是闪一下。
+
+1.1.0 删掉了 `rebuildPending`、整个重建分支和 `RequestRebuild()` 方法，字号直接 `SaveFontScale`。
+
+### 17.4 收起后位置不还原（G6）
+
+`Expand()` 把 `vCY` 补间到屏幕垂直中心，`Collapse()` 却把目标算成「当前位置夹紧到边距内」——手机展开必然把球搬到中央，收起时就停在中央。
+
+现在 `Expand()` 先用 `restoreCY = vCY` 记住展开前的行高，`Collapse()` 回到 `Mathf.Clamp(restoreCY > 0f ? restoreCY : vCY, ...)`。
+
+### 17.5 点按钮往上顿一下（G10）
+
+`Render()` 开头原本是「先 `body.visible = false`，再判 `contentKey`，再判 `FingerDown` 早退」。手指按下行 → `Run()` 置 `contentKey = null` → 0.25 秒轮询进 `Render()` → 整页文字被隐藏后才因 `FingerDown` 提前返回，页面闪一下、视觉上像往上跳。
+
+现在提前到「早退之后」才隐藏；并且新建 `body` 后**立即**恢复滚动位置（`scrollPane.SetPosY` 会把值 clamp 到当前内容高度，空 `body` 上设置会被吞掉），避免列表弹回顶部。
+
+### 17.6 配置页列出无用模组（G7、G12）
+
+`HasOptions(id)` 用来判断一个模组是否值得出现在配置页，条件原本是「有 `toys.*` 之外的动作，或有按键映射」。但 `BuiltinActions` 给**每个**模组都注册了 `toys.status`（运行状态）与 `toys.enabled`（模组总开关），而原来的跳过条件只排除了 `toys.status` 和 `toys.speed.*`，漏了 `toys.enabled`——于是每个模组都被判定为「有选项」，筛选完全失效，28 个模组全部列出。
+
+补上 `toys.enabled` 后，配置页在 4.1.4 真机上从 28 行缩到 7 行：角色半透明、隐藏 HUD、PVE 对局面板、PVE 波次预告、商店和筹码看板、星币商店助手、对队友进行大调查、更新提示。
+
+### 17.7 详情页文字重叠（G4）
+
+`RenderActions` 末尾原本是 `if (!any) Text("此模组没有可调选项。", ...); else y += Px(4);`——`!any` 分支画了提示却不推进 `y`，下一段「Win 模组按键映射」的标题正好画在同一坐标上。现在两个分支都推进 `y`。同时删掉了按键映射下方那段冗长的说明文字。
+
+### 17.8 实测状态
+
+真机（`1435f0be`，Android，游戏 `com.feimo.astralparty`）验证通过：`done: ok=30 failed=0`；圆角在展开与收起动画中无接缝、无发糊；配置页筛选生效；收起后悬浮球回到原位。
+
+PC 端 `build/rastcheck` 28 条断言全绿；烘焙耗时实测 400x480 与 1024x900 均为 0~1 ms。
