@@ -80,9 +80,7 @@ namespace CesiumOverlayMod
         private float RenderKeyMappings(string id, float y)
         {
             if (!CanMap(id)) return y;
-            Text(body, "Win 模组按键映射", Font(17), 0, y, body.width, Px(30)); y += Px(34);
-            Text(body, "点按发送一次；保持按住适用于长按功能，再点松开。关闭或切页会释放。键位取自模组自身的配置。",
-                Font(13), 0, y, body.width, Px(48), OverlayTheme.OnSurfaceVariant); y += Px(54);
+            Text(body, "Win 模组按键映射", Font(17), 0, y, body.width, Px(30)); y += Px(38);
             foreach (var item in KeyBindings(id))
             {
                 var binding = item;

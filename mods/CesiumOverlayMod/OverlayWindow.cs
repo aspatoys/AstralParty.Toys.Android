@@ -141,13 +141,15 @@ namespace CesiumOverlayMod
         private void Render()
         {
             if (panel == null || panel.isDisposed || mode != ShellMode.Expanded) return;
-            if (BodyAlive) body.visible = false;
             string key = BuildContentKey();
             if (key == contentKey) { if (BodyAlive) body.visible = true; return; }
             // Rebuilding the body destroys every child, including whatever button the finger is
             // on, which reads as the text jumping and swallows the tap. Wait for the finger, unless
             // the caller is a long press that must open its page while the hold is still down.
+            // Keep this ahead of the hide below: hiding first blanked the whole page under the
+            // finger for a frame and made a tapped row look like it jumped upwards.
             if (FingerDown && !forceRender) { renderPending = true; if (BodyAlive) body.visible = true; return; }
+            if (BodyAlive) body.visible = false;
             contentKey = key;
 
             float scroll = 0f;
@@ -164,6 +166,10 @@ namespace CesiumOverlayMod
             body.name = "overlay.body";
             body.SetXY(Px(16), Px(60));
             panel.AddChild(body);
+            // Restore the offset before the page fills the view. A scroll pane clamps a position to
+            // the content size it currently knows, so applying it to an empty body threw the value
+            // away and the list snapped back to the top.
+            if (scroll > 0f && body.scrollPane != null) body.scrollPane.SetPosY(scroll, false);
 
             switch (OverlayPresentation.Pages[page].Key)
             {
@@ -301,7 +307,12 @@ namespace CesiumOverlayMod
             var ids = AllMods();
             if (ids.Count == 0)
             {
-                Text(body, "尚未加载任何模组。", Font(13), 0, y, w, Px(30), OverlayTheme.OnSurfaceVariant);
+                // Two different empty states: no mods at all, or every mod is one this list has
+                // nothing to say about. Telling them apart saves the reader a hunt for a bug.
+                string notice = AndroidApi.GetModIds().Count <= 1
+                    ? "尚未加载任何模组。"
+                    : "没有可调的模组。只有带选项或按键映射的模组会列在这里。";
+                Text(body, notice, Font(13), 0, y, w, Px(60), OverlayTheme.OnSurfaceVariant);
                 return;
             }
 
@@ -309,16 +320,43 @@ namespace CesiumOverlayMod
             foreach (var id in ids) y = RenderConfigRow(id, y);
         }
 
-        /// <summary>Every loaded mod, grouped or not — the config page ignores group membership.</summary>
+        /// <summary>
+        /// Every loaded mod that has something behind its row, grouped or not — this page ignores
+        /// group membership. A mod whose detail page would only say 没有可调选项 is left out: most
+        /// mods register nothing but the loader's own status/total-switch actions, which the detail
+        /// page hides, so listing them all produced a column of rows that led nowhere.
+        /// </summary>
         private List<string> AllMods()
         {
             var result = new List<string>();
             foreach (var id in AndroidApi.GetModIds())
             {
                 if (string.Equals(id, "CesiumOverlayMod", StringComparison.OrdinalIgnoreCase)) continue;
-                result.Add(id);
+                if (HasOptions(id)) result.Add(id);
             }
             return result;
+        }
+
+        /// <summary>
+        /// Whether the detail page of [id] has anything to show: an option of its own, or a key
+        /// binding. Keep this in step with RenderActions/RenderKeyMappings — it is the same filter
+        /// they apply, only asked ahead of time.
+        /// </summary>
+        private bool HasOptions(string id)
+        {
+            // The loader gives every mod a status action and a master switch, and the detail page
+            // hides both (the switch is the row's own tap target). Counting them here made the test
+            // true for every mod, so the filter never removed anything.
+            var master = FindMainToggle(id);
+            foreach (var action in AndroidApi.GetActions(id))
+            {
+                if (action.Id == "toys.status" || action.Id.StartsWith("toys.speed.")) continue;
+                if (ReferenceEquals(action, master)) continue;
+                return true;
+            }
+            foreach (var binding in KeyBindings(id))
+                if (!string.IsNullOrWhiteSpace(binding.Keys)) return true;
+            return false;
         }
 
         private float RenderConfigRow(string id, float y)
@@ -618,7 +656,13 @@ namespace CesiumOverlayMod
                 }
                 y += Px(52);
             }
-            if (!any) Text(body, "此模组没有可调选项。", Font(12), 0, y, w, Px(30), OverlayTheme.OnSurfaceVariant);
+            // Advance y in both branches: leaving it untouched drew the next section's heading on
+            // top of this note, which read as two strings printed over each other.
+            if (!any)
+            {
+                Text(body, "此模组没有可调选项。", Font(12), 0, y, w, Px(30), OverlayTheme.OnSurfaceVariant);
+                y += Px(34);
+            }
             else y += Px(4);
             y = RenderKeyMappings(id, y);
             Text(body, "状态：" + StateLabel(id), Font(12), 0, y, w, Px(30), OverlayTheme.OnSurfaceVariant);
@@ -668,7 +712,9 @@ namespace CesiumOverlayMod
                 bool active = Mathf.Abs(Options.FontScale - value) < .03f;
                 Button(body, Mathf.RoundToInt(value * 100f) + "%", "settings.font." + i,
                     i * (fontCell + fontGap), y, fontCell, Px(38),
-                    () => Run(() => { SaveFontScale(value); RequestRebuild(); }),
+                    // Font scale only sizes text inside the panel, so repainting the page is enough.
+                    // Asking for a shell rebuild here stalled the frame and made the blob flash.
+                    () => Run(() => SaveFontScale(value)),
                     active ? OverlayTheme.Primary : OverlayTheme.SurfaceContainerHigh,
                     active ? OverlayTheme.OnPrimary : OverlayTheme.OnSurface);
             }
@@ -852,17 +898,6 @@ namespace CesiumOverlayMod
             // mid-dispatch, which stalls the panel and eats the following taps. Defer instead.
             if (FingerDown && !forceRender) renderPending = true;
             else Render();
-        }
-
-        /// <summary>
-        /// Marks a setting that changes geometry (size, font scale). The new numbers are written to
-        /// disk immediately but only take effect the next time the panel opens: rebuilding the shell
-        /// while it is on screen stalls the frame the user is looking at, and the user cannot see the
-        /// new size until then anyway.
-        /// </summary>
-        private void RequestRebuild()
-        {
-            rebuildPending = true;
         }
     }
 }
