@@ -6,7 +6,15 @@ namespace UnityEngine
 {
     public struct Vector2 { public float x, y; public Vector2(float x, float y) { this.x = x; this.y = y; } public static Vector2 zero => new Vector2(0, 0); }
     public static class Application { public static bool isFocused = true; }
-    public static class Time { public static int frameCount = 0; public static float realtimeSinceStartup = 0f; }
+    public static class Time { public static int frameCount = 0; public static float realtimeSinceStartup = 0f; public static float unscaledDeltaTime = 1f / 60f; }
+    public static class Mathf
+    {
+        public static float Max(float a, float b) => a > b ? a : b;
+        public static float Min(float a, float b) => a < b ? a : b;
+        public static float Clamp(float v, float lo, float hi) => v < lo ? lo : v > hi ? hi : v;
+        public static int Clamp(int v, int lo, int hi) => v < lo ? lo : v > hi ? hi : v;
+        public static int RoundToInt(float v) => (int)System.Math.Round(v, System.MidpointRounding.AwayFromZero);
+    }
     public enum KeyCode
     {
         None = 0, BackQuote = 96, Escape = 27, Space = 32,
