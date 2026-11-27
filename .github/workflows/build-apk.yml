@@ -317,6 +317,14 @@ jobs:
           ls -l aspatoys-*.apk* cesium-loader-mobile-managed-*.zip*
           cat version.json
 
+      - name: Verify DEX visibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          dexdump="$(find "$sdk/build-tools" -name dexdump -type f | sort | tail -n 1)"
+          python3 tools/check-dex-visibility.py --apk "aspatoys-${{ needs.mobile_managed.outputs.version_name }}.apk" --dexdump "$dexdump"
+
       - name: Verify signature
         if: steps.signing.outputs.signed == 'true'
         shell: bash

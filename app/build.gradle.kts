@@ -13,8 +13,8 @@ android {
     }
 
     // 版本号由 CI 传入（tag 发布时取 tag 名），本地构建用默认值。
-    val appVersionName = (project.findProperty("appVersionName") as String?)?.takeIf { it.isNotBlank() } ?: "1.6.0"
-    val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 10600
+    val appVersionName = (project.findProperty("appVersionName") as String?)?.takeIf { it.isNotBlank() } ?: "1.6.1"
+    val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 10601
 
     defaultConfig {
         applicationId = "com.hiynet.aspatoys"
@@ -44,7 +44,8 @@ android {
             signingConfig = signingConfigs.findByName("release")
             optimization {
                 enable = true
-                packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
+                // 不对 kotlin.** 做局部重打包，避免 AGP 9.5.1 R8 把 kotlin.text 等多文件门面子类移到默认包而父类仍为包私有引发 IllegalAccessError。
+                packageScope = setOf("androidx.**", "kotlinx.**")
             }
         }
     }
