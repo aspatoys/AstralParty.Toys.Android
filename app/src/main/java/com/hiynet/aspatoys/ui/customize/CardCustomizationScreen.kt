@@ -39,7 +39,11 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 @Composable
-fun CardCustomizationScreen(controller: CardCustomizationController, modifier: Modifier = Modifier) {
+fun CardCustomizationScreen(
+    controller: CardCustomizationController,
+    tabSelector: (@Composable () -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
     LaunchedEffect(Unit) { controller.enter() }
     var create by rememberSaveable { mutableStateOf(false) }
     var name by rememberSaveable { mutableStateOf("") }
@@ -78,7 +82,7 @@ fun CardCustomizationScreen(controller: CardCustomizationController, modifier: M
                 item { ToysPageHeading("自定义", "导入 Win 版卡牌方案，或为卡牌换一张图。") }
                 item {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        FilterChip(selected = true, onClick = {}, label = { Text("卡牌") })
+                        if (tabSelector != null) tabSelector() else FilterChip(selected = true, onClick = {}, label = { Text("卡牌") })
                         Spacer(Modifier.weight(1f))
                         TextButton(onClick = controller::refresh, enabled = !controller.busy) { Text("刷新") }
                     }

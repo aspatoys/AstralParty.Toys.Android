@@ -97,6 +97,7 @@ class MarketController(
 
     private var loadedPage = 0
     private var cancellation: HttpCancellation? = null
+    private var pendingDetailId: String? = null
 
     /** 当前页码；翻页由 [goToPage] 负责替换列表，不再只追加。 */
     var page by mutableStateOf(1)
@@ -221,11 +222,15 @@ class MarketController(
         settings.marketConsentVersion = com.hiynet.aspatoys.data.settings.AppSettings.CurrentConsentVersion
         consentGranted = true
         showConsent = false
+        val pending = pendingDetailId
+        pendingDetailId = null
         refresh()
+        if (!pending.isNullOrBlank()) openDetail(pending)
     }
 
     fun dismissConsent() {
         showConsent = false
+        pendingDetailId = null
         message = "未同意免责声明，本次不会连接市场。"
     }
 
@@ -261,7 +266,10 @@ class MarketController(
     // ============================== 详情 ==============================
 
     fun openDetail(id: String) {
-        if (!requireConsent()) return
+        if (!requireConsent()) {
+            pendingDetailId = id
+            return
+        }
         detailLoading = true
         detailError = null
         detail = null

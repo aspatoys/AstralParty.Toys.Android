@@ -71,7 +71,8 @@ import com.hiynet.aspatoys.ui.market.MarketScreen
 import com.hiynet.aspatoys.ui.mods.ModsController
 import com.hiynet.aspatoys.ui.mods.ModsScreen
 import com.hiynet.aspatoys.ui.customize.CardCustomizationController
-import com.hiynet.aspatoys.ui.customize.CardCustomizationScreen
+import com.hiynet.aspatoys.ui.customize.CustomizeScreen
+import com.hiynet.aspatoys.ui.customize.HomeBackgroundController
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.hiynet.aspatoys.ui.settings.SettingsScreen
@@ -106,6 +107,7 @@ fun ToysApp() {
     val market = remember { MarketController(container, scope) }
     val mods = remember { ModsController(container, scope, appContext) }
     val cards = remember { CardCustomizationController(container, scope, appContext) }
+    val homeBackground = remember { HomeBackgroundController(container, scope, appContext) }
     com.hiynet.aspatoys.ui.settings.UpdateAutomation()
     OverlayAppearanceSync(container.settings)
 
@@ -182,10 +184,15 @@ fun ToysApp() {
                                     destination = destination,
                                     market = market,
                                     mods = mods,
-                                cards = cards,
+                                    cards = cards,
+                                    homeBackground = homeBackground,
                                     container = container,
                                     onOpenSettings = { destination = Destination.SETTINGS },
                                     onOpenLoader = { destination = Destination.LOADER },
+                                    onOpenMarketMod = { modId ->
+                                        destination = Destination.MARKET
+                                        market.openDetail(modId)
+                                    },
                                     modifier = if (destination == Destination.MARKET) Modifier.fillMaxSize()
                                         else Modifier.widthIn(max = 980.dp).fillMaxHeight(),
                                 )
@@ -207,9 +214,14 @@ fun ToysApp() {
                                 market = market,
                                 mods = mods,
                                 cards = cards,
+                                homeBackground = homeBackground,
                                 container = container,
                                 onOpenSettings = { destination = Destination.SETTINGS },
-                                    onOpenLoader = { destination = Destination.LOADER },
+                                onOpenLoader = { destination = Destination.LOADER },
+                                onOpenMarketMod = { modId ->
+                                    destination = Destination.MARKET
+                                    market.openDetail(modId)
+                                },
                                 modifier = Modifier.fillMaxSize().padding(innerPadding),
                             )
                         }
@@ -245,10 +257,12 @@ private fun DestinationContent(
     market: MarketController,
     mods: ModsController,
     cards: CardCustomizationController,
+    homeBackground: HomeBackgroundController,
     container: AppContainer,
     onOpenSettings: () -> Unit,
     modifier: Modifier,
     onOpenLoader: () -> Unit = {},
+    onOpenMarketMod: (String) -> Unit = {},
 ) {
     Box(modifier = modifier) {
         AnimatedContent(
@@ -272,7 +286,13 @@ private fun DestinationContent(
 
                 Destination.MARKET -> MarketScreen(controller = market)
 
-                Destination.CUSTOMIZE -> CardCustomizationScreen(cards)
+                Destination.CUSTOMIZE -> CustomizeScreen(
+                    cards = cards,
+                    homeBackground = homeBackground,
+                    loaderVersion = container.loader.version,
+                    onOpenMarketMod = onOpenMarketMod,
+                    onOpenLoader = onOpenLoader,
+                )
 
                 Destination.LOADER -> LoaderScreen(
                     mods = mods,
