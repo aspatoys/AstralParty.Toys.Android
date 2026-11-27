@@ -151,4 +151,29 @@ class HomeBackgroundRepositoryTest {
         assertFalse(disabledStatus.modEnabled)
         assertEquals("off", disabledStatus.mode)
     }
+
+    @Test
+    fun setScaleModeUpdatesConfigAndChecksMinVersion() {
+        val fs = InMemoryLoaderFs()
+        val modDir = "${layout.modsRoot.absolutePath}/HomeBackgroundMod"
+        fs.writeText("$modDir/HomeBackgroundMod.dll", "dll")
+        fs.writeText("$modDir/assets/bg.png", "png")
+
+        val entries = mutableListOf(entry("1.2.1"))
+        val repo = makeRepo(fs, entries)
+
+        val oldStatus = repo.inspect()
+        assertFalse(oldStatus.supportsScaleMode)
+        assertEquals(HomeBackgroundRepository.ScaleMode.FILL, oldStatus.scaleMode)
+
+        entries[0] = entry("1.2.2")
+        for (mode in HomeBackgroundRepository.ScaleMode.entries) {
+            repo.setScaleMode(mode)
+            val updated = repo.inspect()
+            assertTrue(updated.supportsScaleMode)
+            assertEquals(mode, updated.scaleMode)
+        }
+        val savedJson = fs.readText("$modDir/config.json").orEmpty()
+        assertTrue(savedJson.contains("\"scaleMode\": \"stretch\""))
+    }
 }

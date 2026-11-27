@@ -244,6 +244,43 @@ fun HomeBackgroundScreen(
 
                 item {
                     Column(Modifier.fillMaxWidth().toysPanel().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("显示模式", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            HomeBackgroundRepository.ScaleMode.entries.forEach { mode ->
+                                FilterChip(
+                                    selected = status.scaleMode == mode,
+                                    onClick = { controller.setScaleMode(mode) },
+                                    enabled = !controller.busy,
+                                    label = { Text(mode.label) },
+                                    modifier = Modifier.testTag("homebg.scale.${mode.configValue}"),
+                                )
+                            }
+                        }
+                        Text(
+                            status.scaleMode.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                        if (!status.supportsScaleMode) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    "显示模式切换及超宽屏满屏适配需 HomeBackgroundMod ${HomeBackgroundRepository.MinScaleModeVersion}+ 生效。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = scheme.error,
+                                )
+                                OutlinedButton(onClick = { onOpenMarketMod(HomeBackgroundRepository.ModId) }) {
+                                    Text("前往市场更新")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Column(Modifier.fillMaxWidth().toysPanel().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(
                             Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,

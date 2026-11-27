@@ -35,11 +35,30 @@ class HomeBackgroundRepository(
         unavailableReasonProvider = { loader.unavailableReason() },
     )
 
+    enum class ScaleMode(
+        val configValue: String,
+        val label: String,
+        val description: String,
+    ) {
+        FILL("fill", "填充", "等比放大铺满全屏，裁掉超出部分，不变形且无黑边。"),
+        FIT("fit", "适应", "等比完整显示整个画面，留边以纯黑填充，不裁切内容。"),
+        TILE("tile", "平铺", "按素材原尺寸重复平铺填满整个屏幕。"),
+        STRETCH("stretch", "拉伸", "按屏幕宽高自由拉伸铺满全屏，超宽屏可能变形。");
+
+        companion object {
+            fun fromConfig(raw: String?): ScaleMode {
+                val clean = raw?.trim().orEmpty()
+                return entries.firstOrNull { it.configValue.equals(clean, ignoreCase = true) } ?: FILL
+            }
+        }
+    }
+
     data class Config(
         val enable: Boolean = true,
         val hideThemeVideo: Boolean = true,
         val video: String = DefaultVideo,
         val image: String = DefaultImage,
+        val scaleMode: ScaleMode = ScaleMode.FILL,
     )
 
     data class Status(
@@ -49,10 +68,12 @@ class HomeBackgroundRepository(
         val modEnabled: Boolean = false,
         val installedVersion: String = "",
         val needsVideoUpgrade: Boolean = false,
+        val supportsScaleMode: Boolean = true,
         /** off（未启用）/ none（无背景文件）/ image / video */
         val mode: String = "off",
         val configEnabled: Boolean = true,
         val hideThemeVideo: Boolean = true,
+        val scaleMode: ScaleMode = ScaleMode.FILL,
         val videoFile: String = "",
         val videoSize: Long = 0L,
         val imageFile: String = "",
@@ -77,6 +98,7 @@ class HomeBackgroundRepository(
         val imagePath = resolveImagePath(modDir, cfg.image)
         val videoSize = videoPath?.let { fs.fileSize(it) } ?: 0L
         val needsUpgrade = entry.version.isBlank() || SdkVersions.compare(entry.version, MinSmoothVideoVersion) < 0
+        val supportsScaleMode = entry.version.isNotBlank() && SdkVersions.compare(entry.version, MinScaleModeVersion) >= 0
 
         val previewFile = if (imagePath != null && videoPath == null) cachePreview(imagePath) else null
         val mode = when {
@@ -92,9 +114,11 @@ class HomeBackgroundRepository(
             modEnabled = entry.enabled,
             installedVersion = entry.version,
             needsVideoUpgrade = needsUpgrade,
+            supportsScaleMode = supportsScaleMode,
             mode = mode,
             configEnabled = cfg.enable,
             hideThemeVideo = cfg.hideThemeVideo,
+            scaleMode = cfg.scaleMode,
             videoFile = videoPath?.substringAfterLast('/') ?: "",
             videoSize = videoSize,
             imageFile = imagePath?.substringAfterLast('/') ?: "",
@@ -143,6 +167,12 @@ class HomeBackgroundRepository(
         val (_, modDir) = requireInstalledModDir()
         val cfg = readConfig(modDir)
         writeConfig(modDir, cfg.copy(hideThemeVideo = hide))
+    }
+
+    fun setScaleMode(mode: ScaleMode) {
+        val (_, modDir) = requireInstalledModDir()
+        val cfg = readConfig(modDir)
+        writeConfig(modDir, cfg.copy(scaleMode = mode))
     }
 
     fun enableMod() {
@@ -194,6 +224,7 @@ class HomeBackgroundRepository(
             hideThemeVideo = obj.booleanOrDefault("hideThemeVideo", true),
             video = obj.string("video").ifBlank { DefaultVideo },
             image = obj.string("image").ifBlank { DefaultImage },
+            scaleMode = ScaleMode.fromConfig(obj.string("scaleMode")),
         )
     }
 
@@ -206,6 +237,7 @@ class HomeBackgroundRepository(
             text = text?.let { ModConfigText.patchValue(it, "hideThemeVideo", cfg.hideThemeVideo.toString()) }
             text = text?.let { ModConfigText.patchValue(it, "video", ModConfigText.quote(cfg.video)) }
             text = text?.let { ModConfigText.patchValue(it, "image", ModConfigText.quote(cfg.image)) }
+            text = text?.let { ModConfigText.patchValue(it, "scaleMode", ModConfigText.quote(cfg.scaleMode.configValue)) }
             text
         } else {
             null
@@ -220,7 +252,8 @@ class HomeBackgroundRepository(
           "enable": ${cfg.enable},
           "hideThemeVideo": ${cfg.hideThemeVideo},
           "video": ${ModConfigText.quote(cfg.video)},
-          "image": ${ModConfigText.quote(cfg.image)}
+          "image": ${ModConfigText.quote(cfg.image)},
+          "scaleMode": ${ModConfigText.quote(cfg.scaleMode.configValue)}
         }
         """.trimIndent() + "\n"
 
@@ -277,6 +310,7 @@ class HomeBackgroundRepository(
     companion object {
         const val ModId = "HomeBackgroundMod"
         const val MinSmoothVideoVersion = "1.2.0"
+        const val MinScaleModeVersion = "1.2.2"
         const val DefaultVideo = "bg.mp4"
         const val DefaultImage = "assets/bg.png"
         private const val ManagedImagePrefix = "bg-toys-"

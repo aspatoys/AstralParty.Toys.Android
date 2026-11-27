@@ -212,6 +212,11 @@ class HomeBackgroundController(
         notice = if (hide) "已设置：隐藏官方主题背景动画。" else "已设置：保留官方主题背景动画。"
     }
 
+    fun setScaleMode(mode: HomeBackgroundRepository.ScaleMode) = runSimple("正在保存显示模式…") {
+        repo.setScaleMode(mode)
+        notice = "已切换显示模式为「${mode.label}」（回到游戏主页或重启游戏后生效）。"
+    }
+
     fun enableMod() = runSimple("正在启用自定义主页背景模组…") {
         repo.enableMod()
         notice = "已启用自定义主页背景模组，重启游戏后生效。"
